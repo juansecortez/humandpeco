@@ -17,7 +17,7 @@ class UsersTableSeeder extends Seeder
         ") ?? 'dbo';
 
         // Generar password hasheado para el insert
-        $passHash = Hash::make('secret');
+        $passHash = Hash::make('secretHumand');
 
         // Ejecutar todo en un solo batch
         DB::unprepared("
@@ -29,7 +29,7 @@ class UsersTableSeeder extends Seeder
             INSERT INTO [{$schema}].[users]
                 (id, name, email, email_verified_at, password, role_id, picture, remember_token, created_at, updated_at)
             VALUES
-                (1, 'Admin',   'admin@material.com',   GETDATE(), '{$passHash}', 1, '../material/img/faces/avatar.jpg', NULL, GETDATE(), GETDATE()),
+                (1, 'Admin',   'adminHumandPeco@pcolorada.com',   GETDATE(), '{$passHash}', 1, '../material/img/faces/avatar.jpg', NULL, GETDATE(), GETDATE()),
                 (2, 'Creator', 'creator@material.com', GETDATE(), '{$passHash}', 2, '../material/img/faces/marc.jpg',   NULL, GETDATE(), GETDATE()),
                 (3, 'Member',  'member@material.com',  GETDATE(), '{$passHash}', 3, '../material/img/faces/card-profile1-square.jpg', NULL, GETDATE(), GETDATE());
 

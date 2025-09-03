@@ -54,7 +54,7 @@
                       <i class="material-icons">email</i>
                     </span>
                   </div>
-                  <input type="email" class="form-control err-email" id="exampleEmails" name="email" placeholder="{{ __('Email...') }}" value="{{ old('email', 'admin@material.com') }}" required>
+                  <input type="email" class="form-control err-email" id="exampleEmails" name="email" placeholder="{{ __('Email...') }}"  required>
                   @include('alerts.feedback', ['field' => 'email'])
                 </div>
               </span>
@@ -65,7 +65,7 @@
                       <i class="material-icons">lock_outline</i>
                     </span>
                   </div>
-                  <input type="password" class="form-control" id="examplePassword" name="password" placeholder="{{ __('Password...') }}" value="secret" required>
+                  <input type="password" class="form-control" id="examplePassword" name="password" placeholder="{{ __('Password...') }}" required>
                   @include('alerts.feedback', ['field' => 'password'])
                 </div>
               </span>

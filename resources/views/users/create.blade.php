@@ -64,11 +64,19 @@
                   <label class="col-sm-2 col-form-label">{{ __('Role') }}</label>
                   <div class="col-sm-7">
                     <div class="form-group{{ $errors->has('role_id') ? ' has-danger' : '' }}">
-                      <select class="selectpicker col-sm-12 pl-0 pr-0" name="role_id" data-style="select-with-transition" title="" data-size="100">
-                        @foreach($roles as $role)
-                            <option value="{{$role->id}}" @if (old('role_id') == $role->id) selected="selected" @endif>{{$role->name}}</option>
-                        @endforeach
-                      </select>
+                    <select class="selectpicker col-sm-12 pl-0 pr-0"
+        name="role_id"
+        data-style="select-with-transition"
+        title="Seleccione un rol"
+        data-size="100">
+  @foreach($roles as $role)
+    <option value="{{ $role->id }}"
+      {{ (string) old('role_id', $user->role_id ?? '') === (string) $role->id ? 'selected' : '' }}>
+      {{ $role->name }}
+    </option>
+  @endforeach
+</select>
+
                       @include('alerts.feedback', ['field' => 'role_id'])
                     </div>
                   </div>
@@ -101,3 +109,18 @@
     </div>
   </div>
 @endsection
+@push('js')
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.jQuery && $.fn.selectpicker) {
+      $('.selectpicker').selectpicker('render'); // o 'refresh'
+    } else {
+      console.warn('selectpicker no está cargado; usando <select> nativo');
+      document.querySelectorAll('select.selectpicker').forEach(function(el){
+        el.classList.remove('selectpicker');
+        el.classList.add('form-control'); // fallback visible
+      });
+    }
+  });
+</script>
+@endpush

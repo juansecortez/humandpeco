@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Artisan;
-
+use App\Http\Controllers\VacacionesController;
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -122,4 +122,11 @@ Route::group(['middleware' => 'auth:web,organigrama'], function () {
     Route::get('google-maps', ['as' => 'page.google_maps', 'uses' => 'MapPagesController@googleMaps']);
     Route::get('fullscreen-maps', ['as' => 'page.fullscreen_maps', 'uses' => 'MapPagesController@fullscreenMaps']);
     Route::get('vector-maps', ['as' => 'page.vector_maps', 'uses' => 'MapPagesController@vectorMaps']);
+
+    Route::get('/vacaciones/administracion', [VacacionesController::class, 'admin'])
+        ->name('vacaciones.admin');
+Route::post('/vacaciones/admin/run-etl', [VacacionesController::class, 'runEtl'])
+    ->name('vacaciones.runEtl');
+    Route::get('/vacaciones/estatus', [VacacionesController::class, 'status'])
+        ->name('vacaciones.status');
 });

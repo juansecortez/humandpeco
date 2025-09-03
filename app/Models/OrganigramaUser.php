@@ -14,6 +14,7 @@ class OrganigramaUser extends Authenticatable
     public $incrementing  = false;
     protected $keyType    = 'string';
     protected $rememberTokenName = null;
+    public $timestamps = false;
 
     /**
      * Nombre “genérico” para que en las vistas puedas usar auth()->user()->name
@@ -51,15 +52,11 @@ class OrganigramaUser extends Authenticatable
     {
         return $this->getKeyName(); // 'UsuarioId'
     }
-    public function isAdmin(): bool
-{
-    // Ajusta según tu lógica real (ej. $this->rol === 1)
-    return false;
-}
 
-public function isCreator(): bool
+
+public function appUserByName()
 {
-    // Ajusta según tu lógica real
-    return false;
+    return \App\User::where('name', $this->getAuthIdentifier())->first();
+    // o usa $this->UsuarioId / $this->Correo si prefieres otro match
 }
 }

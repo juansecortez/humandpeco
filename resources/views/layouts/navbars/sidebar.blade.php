@@ -146,6 +146,35 @@
           </ul>
         </div>
       </li>
+
+
+      <li class="nav-item {{ $menuParent == 'vacaciones' ? 'active' : '' }}">
+        <a class="nav-link" data-toggle="collapse" href="#VacaExamples" {{ $menuParent == 'Vacaciones' ? 'aria-expanded="true"' : '' }}>
+          <i class="material-icons">image</i>
+          <p> {{ __('Vacaciones') }}
+            <b class="caret"></b>
+          </p>
+        </a>
+        <div class="collapse{{ $menuParent == 'vacas' ? ' show' : '' }}" id="VacaExamples">
+          <ul class="nav">
+            <li class="nav-item">
+              <a class="nav-link" href="{{ route('vacaciones.admin') }}">
+                <span class="sidebar-mini"> AV </span>
+                <span class="sidebar-normal"> {{ __('Administrar Vacaciones') }} </span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ route('vacaciones.status') }}">
+                <span class="sidebar-mini"> EV </span>
+                <span class="sidebar-normal"> {{ __('Estatus de Vacaciones') }} </span>
+              </a>
+            </li>
+           
+          </ul>
+        </div>
+      </li>
+
+
       <li class="nav-item {{ $menuParent == 'pages' ? 'active' : '' }}">
         <a class="nav-link" data-toggle="collapse" href="#pagesExamples" {{ $menuParent == 'Pages' ? 'aria-expanded="true"' : '' }}>
           <i class="material-icons">image</i>

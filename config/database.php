@@ -73,29 +73,50 @@ return [
             'sslmode' => 'prefer',
         ],
 
-        'sqlsrv' => [
-            'driver' => 'sqlsrv',
-            'host' => env('DB_HOST', 'localhost'),
-            'port' => env('DB_PORT', '1433'),
-            'database' => env('DB_DATABASE', 'forge'),
-            'username' => env('DB_USERNAME', 'forge'),
-            'password' => env('DB_PASSWORD', ''),
-            'charset' => 'utf8',
-            'prefix' => '',
-            'prefix_indexes' => true,
-        ],
-                'organigrama' => [
-            'driver' => 'sqlsrv',
-            'url' => env('DATABASE_URL_ORGANIGRAMA'),
-            'host' => env('DB_ORGANIGRAMA_HOST', '192.168.100.60'),
-            'port' => env('DB_ORGANIGRAMA_PORT', '1433'),
-            'database' => env('DB_ORGANIGRAMA_DATABASE', 'Organigrama'),
-            'username' => env('DB_ORGANIGRAMA_USERNAME', 'tinformacion'),
-            'password' => env('DB_ORGANIGRAMA_PASSWORD', 'Timeinlondon$'),
-            'charset' => 'utf8',
-            'prefix' => '',
-            'prefix_indexes' => true,
-        ],
+'sqlsrv' => [
+    'driver' => 'sqlsrv',
+    'host' => env('DB_HOST', 'localhost'),
+    'port' => env('DB_PORT', '1433'),
+    'database' => env('DB_DATABASE', 'forge'),
+    'username' => env('DB_USERNAME', 'forge'),
+    'password' => env('DB_PASSWORD', ''),
+    'charset' => 'utf8',
+    'prefix' => '',
+    'prefix_indexes' => true,
+
+    // Deben ser booleanos reales
+     'encrypt' => env('DB_ORGANIGRAMA_ENCRYPT', 'no'),
+    'trust_server_certificate' => filter_var(env('DB_TRUST_SERVER_CERTIFICATE', false), FILTER_VALIDATE_BOOLEAN),
+
+    'options' => extension_loaded('sqlsrv') ? [
+        'LoginTimeout' => (int) env('DB_LOGIN_TIMEOUT', 5),
+        'ConnectRetryCount'    => (int) env('DB_CONNECT_RETRY_COUNT', 2),
+        'ConnectRetryInterval' => (int) env('DB_CONNECT_RETRY_INTERVAL', 2),
+        PDO::SQLSRV_ATTR_QUERY_TIMEOUT => (int) env('DB_QUERY_TIMEOUT', 15),
+        PDO::SQLSRV_ATTR_ENCODING => PDO::SQLSRV_ENCODING_UTF8,
+    ] : [],
+],
+'organigrama' => [
+        'driver' => 'sqlsrv',
+        'url' => env('DATABASE_URL_ORGANIGRAMA'),
+        'host' => env('DB_ORGANIGRAMA_HOST', '192.168.100.60'),
+        'port' => env('DB_ORGANIGRAMA_PORT', '1433'),
+        'database' => env('DB_ORGANIGRAMA_DATABASE', 'Organigrama'),
+        'username' => env('DB_ORGANIGRAMA_USERNAME', 'tinformacion'),
+        'password' => env('DB_ORGANIGRAMA_PASSWORD', 'Timeinlondon$'),
+        'charset' => 'utf8',
+        'prefix' => '',
+        'prefix_indexes' => true,
+
+        // Claves importantes con ODBC 18+
+        'encrypt' => env('DB_ORGANIGRAMA_ENCRYPT', 'yes'), // mantiene cifrado
+        'trust_server_certificate' => env('DB_ORGANIGRAMA_TRUST_SERVER_CERTIFICATE', true),
+
+        // Opcional: fuerza UTF-8 en el driver PDO SQLSRV
+        'options' => extension_loaded('sqlsrv') ? [
+            PDO::SQLSRV_ATTR_ENCODING => PDO::SQLSRV_ENCODING_UTF8,
+        ] : [],
+    ],
 
     ],
 

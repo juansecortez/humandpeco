@@ -33,10 +33,12 @@ class UserController extends Controller
      * @param  \App\Role  $model
      * @return \Illuminate\View\View
      */
-    public function create(Role $model)
-    {
-        return view('users.create', ['roles' => $model->get(['id', 'name'])]);
-    }
+public function create()
+{
+    // Trae los roles con orden estable
+    $roles = \App\Role::orderBy('id')->get(['id','name']);
+    return view('users.create', compact('roles'));
+}
 
     /**
      * Store a newly created user in storage
@@ -45,15 +47,22 @@ class UserController extends Controller
      * @param  \App\User  $model
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function store(UserRequest $request, User $model)
-    {
-        $model->create($request->merge([
-            'picture' => $request->photo ? $request->photo->store('profile', 'public') : null,
-            'password' => Hash::make($request->get('password'))
-        ])->all());
+public function store(UserRequest $request, User $model)
+{
+    $data = $request->only(['name','email','role_id']); // <- incluye role_id
 
-        return redirect()->route('user.index')->withStatus(__('User successfully created.'));
+    if ($request->filled('password')) {
+        $data['password'] = Hash::make($request->input('password'));
     }
+
+    if ($request->hasFile('photo')) {
+        $data['picture'] = $request->file('photo')->store('profile', 'public');
+    }
+
+    $model->create($data);
+
+    return redirect()->route('user.index')->withStatus(__('User successfully created.'));
+}
 
     /**
      * Show the form for editing the specified user
@@ -64,8 +73,12 @@ class UserController extends Controller
      */
     public function edit(User $user, Role $model)
     {
-        return view('users.edit', ['user' => $user->load('role'), 'roles' => $model->get(['id', 'name'])]);
+        return view('users.edit', [
+            'user'  => $user->load('role'),
+            'roles' => Role::all(['id','name']),
+        ]);
     }
+
 
     /**
      * Update the specified user in storage
@@ -76,16 +89,25 @@ class UserController extends Controller
      */
     public function update(UserRequest $request, User $user)
     {
-        $hasPassword = $request->get('password');
-        $user->update(
-            $request->merge([
-                'picture' => $request->photo ? $request->photo->store('profile', 'public') : $user->picture,
-                'password' => Hash::make($request->get('password'))
-            ])->except([$hasPassword ? '' : 'password'])
-        );
+        $data = $request->only(['name', 'email', 'role_id']); // <- incluye role_id
 
-        return redirect()->route('user.index')->withStatus(__('User successfully updated.'));
+        if ($request->hasFile('photo')) {
+            $data['picture'] = $request->file('photo')->store('profile', 'public');
+        } else {
+            $data['picture'] = $user->picture;
+        }
+
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($request->input('password'));
+        }
+
+        $user->update($data);
+
+        return redirect()
+            ->route('user.index')
+            ->withStatus(__('User successfully updated.'));
     }
+
 
     /**
      * Remove the specified user from storage

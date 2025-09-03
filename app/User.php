@@ -17,7 +17,11 @@ class User extends Authenticatable
      * @var array
      */
     protected $fillable = [
-        'name', 'email', 'password', 'picture' ,'role_id'
+        'name',
+        'email',
+        'password',
+        'picture',
+        'role_id'
     ];
 
     /**
@@ -26,7 +30,8 @@ class User extends Authenticatable
      * @var array
      */
     protected $hidden = [
-        'password', 'remember_token',
+        'password',
+        'remember_token',
     ];
 
     /**
@@ -82,4 +87,16 @@ class User extends Authenticatable
     {
         return $this->role_id == 3;
     }
+
+    public function isVacaciones()
+    {
+        return (int) $this->role_id === 4;
+    }
+    public function isNominas()
+    {
+        return (int) $this->role_id === 5;
+    }
+
+    public function hasAllowedLocalRole() { return in_array((int) $this->role_id, [1,2], true); }
+public function hasAllowedOrganigramaRole() { return in_array((int) $this->role_id, [4,5], true); }
 }

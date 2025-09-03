@@ -42,5 +42,6 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('manage-items', 'App\Policies\UserPolicy@manageItems');
 
         Gate::define('manage-users', 'App\Policies\UserPolicy@manageUsers');
+        
     }
 }
