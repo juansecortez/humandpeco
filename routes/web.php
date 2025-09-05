@@ -129,4 +129,7 @@ Route::post('/vacaciones/admin/run-etl', [VacacionesController::class, 'runEtl']
     ->name('vacaciones.runEtl');
     Route::get('/vacaciones/estatus', [VacacionesController::class, 'status'])
         ->name('vacaciones.status');
+
+        Route::post('/vacaciones/run-export-sap', [App\Http\Controllers\VacacionesController::class, 'runExportSap'])
+    ->name('vacaciones.runExportSap');
 });
