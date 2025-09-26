@@ -34,15 +34,16 @@
 
       <div class="card-body">
 
-        {{-- Flash --}}
-        @if (session('status'))  <div class="alert alert-success">{{ session('status') }}</div> @endif
-        @if (session('error'))   <div class="alert alert-danger">{{ session('error') }}</div> @endif
+        <div id="flash">
+          @if (session('status'))  <div class="alert alert-success">{{ session('status') }}</div> @endif
+          @if (session('error'))   <div class="alert alert-danger">{{ session('error') }}</div> @endif
+        </div>
 
         {{-- CONTROLES --}}
         <div class="row align-items-stretch mb-3">
-          {{-- Botón exportar --}}
+          {{-- Botón exportar (AJAX) --}}
           <div class="col-12 col-lg-3 mb-2 mb-lg-0">
-            <form action="{{ route('vacaciones.runExportSap') }}" method="POST" class="w-100">
+            <form id="form-export-sap" action="{{ route('vacaciones.runExportSap') }}" method="POST" class="w-100">
               @csrf
               <button type="submit" class="btn btn-rose w-100" id="btn-run-export">
                 <i class="material-icons">send</i> Enviar pendientes a SAP
@@ -101,23 +102,19 @@
           <table id="sap-exports-table" class="table table-striped table-no-bordered table-hover" width="100%">
             <thead class="text-primary">
               <tr>
-                <th>ID</th>
-                <th>Request ID</th>
-                <th>Usuario</th>
-                <th>CódigoCol</th>
-                <th>Política</th>
-                <th>Clave</th>
-                <th>Infotipo</th>
-                <th>Desde</th>
-                <th>Hasta</th>
-                <th>Días</th>
-                <th>Estado</th>
-                <th>HTTP</th>
-                <th>Resultado</th>
-                <th>Creado</th>
-                <th>Respondido</th>
-                <th>Mensaje</th>
-                <th>URL</th>
+                {{-- Quitamos: ID, Clave, Infotipo, HTTP, Respondido --}}
+                <th>Request ID</th>     {{-- 0 --}}
+                <th>Usuario</th>        {{-- 1 --}}
+                <th>CódigoCol</th>      {{-- 2 --}}
+                <th>Política</th>       {{-- 3 --}}
+                <th>Desde</th>          {{-- 4 --}}
+                <th>Hasta</th>          {{-- 5 --}}
+                <th>Días</th>           {{-- 6 --}}
+                <th>Estado</th>         {{-- 7 badge --}}
+                <th>Resultado</th>      {{-- 8 badge --}}
+                <th>Creado</th>         {{-- 9 --}}
+                <th>Mensaje</th>        {{-- 10 icono -> modal --}}
+                <th>URL</th>            {{-- 11 --}}
               </tr>
             </thead>
             <tbody>
@@ -125,9 +122,9 @@
                 @php
                   [$bgS, $fgS] = stateColors($e->processed_state);
                   [$bgR, $fgR, $labR] = resultColors($e->response_ok, $e->response_status);
+                  $msg = $e->response_text ?? '';
                 @endphp
                 <tr>
-                  <td>{{ $e->id }}</td>
                   <td>{{ $e->request_id }}</td>
                   <td>
                     {{ $e->usuario_id ?: Str::before($e->issuer_employee_internal_id, '@') }}
@@ -135,8 +132,6 @@
                   </td>
                   <td>{{ $e->codigo_col }}</td>
                   <td>{{ $e->policy_name }}</td>
-                  <td>{{ $e->clave }}</td>
-                  <td>{{ $e->infotipo }}</td>
                   <td>{{ optional($e->from_date)->format('Y-m-d') }}</td>
                   <td>{{ optional($e->to_date)->format('Y-m-d') }}</td>
                   <td>{{ $e->dias }}</td>
@@ -145,30 +140,55 @@
                       {{ strtoupper($e->processed_state) }}
                     </span>
                   </td>
-                  <td>{{ $e->response_status ?? '—' }}</td>
                   <td>
                     <span class="badge" style="background-color: {{ $bgR }}; color: {{ $fgR }}; border-radius:12px; padding:6px 10px; font-weight:600;">
                       {{ $labR }}
                     </span>
                   </td>
                   <td>{{ optional($e->created_at)->format('Y-m-d H:i') }}</td>
-                  <td>{{ optional($e->responded_at)->format('Y-m-d H:i') ?: '—' }}</td>
-                  <td title="{{ $e->response_text }}">{{ Str::limit($e->response_text, 80) }}</td>
+                  <td>
+                    <button type="button"
+                      class="btn btn-link btn-info btn-just-icon view-msg"
+                      title="Ver mensaje"
+                      data-message="{{ e($msg) }}">
+                      <i class="material-icons">message</i>
+                    </button>
+                  </td>
                   <td>
                     @if($e->request_url)
-                      <a href="{{ $e->request_url }}" target="_blank" rel="noopener" class="btn btn-link btn-info btn-just-icon">
+                      <a href="{{ $e->request_url }}" target="_blank" rel="noopener" class="btn btn-link btn-info btn-just-icon" title="Abrir URL">
                         <i class="material-icons">open_in_new</i>
                       </a>
                     @endif
                   </td>
                 </tr>
               @empty
-                <tr><td colspan="16" class="text-center text-muted">Aún no hay registros.</td></tr>
+                <tr><td colspan="12" class="text-center text-muted">Aún no hay registros.</td></tr>
               @endforelse
             </tbody>
           </table>
         </div>
 
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- Modal para mensaje --}}
+<div class="modal fade" id="msgModal" tabindex="-1" role="dialog" aria-labelledby="msgModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="msgModalLabel">Mensaje de SAP</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body" style="white-space:pre-wrap;">
+        <pre id="modalMsgBody" class="mb-0" style="white-space:pre-wrap;"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-rose" data-dismiss="modal">Cerrar</button>
       </div>
     </div>
   </div>
@@ -189,35 +209,14 @@
 @push('js')
   <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js"></script>
-
   <script>
     $(function () {
-      if (typeof $.fn.DataTable === 'undefined') {
-        console.error('DataTables no está cargado.');
-        return;
-      }
-
-      // Filtro combinado (usuario / estado / política)
-      $.fn.dataTable.ext.search.push(function(settings, data) {
-        const userFilter   = ($('#filter-usuario').val() || '').toLowerCase();
-        const stateFilter  = ($('#filter-estado').val()   || '').toUpperCase();
-        const policyFilter = ($('#filter-politica').val() || '');
-
-        const usuarioCell  = ((data[2] || '') + ' ' + (data[2] || '')).toLowerCase(); // usuario + correo mostrados
-        const policyCell   = (data[4] || '');
-        const procState    = (data[10] || '').replace(/<[^>]*>/g,'').toUpperCase().trim();
-
-        if (userFilter && !usuarioCell.includes(userFilter)) return false;
-        if (stateFilter && procState !== stateFilter) return false;
-        if (policyFilter && policyCell !== policyFilter) return false;
-        return true;
-      });
-
+      // --- DataTable ---
       const dt = $('#sap-exports-table').DataTable({
         pagingType: "full_numbers",
         lengthMenu: [[10, 25, 50, -1],[10, 25, 50, "Todos"]],
         responsive: true,
-        order: [[13, 'desc']], // Creado desc
+        order: [[9, 'desc']], // "Creado" es la columna 9 ahora
         language: {
           search: "_INPUT_",
           searchPlaceholder: "Buscar en toda la tabla…",
@@ -229,20 +228,35 @@
           paginate: { first: "Primero", last: "Último", next: "Siguiente", previous: "Anterior" }
         },
         columnDefs: [
-          { targets: [15,16], orderable: false }, // Mensaje, URL
-          { targets: [10,12], render: function(data, type) { // badges -> texto para ordenar/filtrar
+          // Badges: usar texto para ordenar/filtrar
+          { targets: [7,8], render: function(data, type) {
               if (type === 'sort' || type === 'filter') return String(data).replace(/<[^>]*>/g,'').trim();
               return data;
             }
-          }
+          },
+          { targets: [10,11], orderable: false } // Mensaje, URL
         ]
       });
 
-      // Disparadores
-      $('#filter-usuario').on('input', function(){ dt.draw(); });
-      $('#filter-estado').on('change', function(){ dt.draw(); });
-      $('#filter-politica').on('change', function(){ dt.draw(); });
+      // --- Filtros combinados ---
+      $.fn.dataTable.ext.search.push(function(settings, data) {
+        const userFilter   = ($('#filter-usuario').val() || '').toLowerCase();
+        const stateFilter  = ($('#filter-estado').val()   || '').toUpperCase();
+        const policyFilter = ($('#filter-politica').val() || '');
 
+        const usuarioCell  = (data[1] || '').toLowerCase(); // Usuario + correo (mismo td)
+        const policyCell   = (data[3] || '');
+        const procState    = (data[7] || '').replace(/<[^>]*>/g,'').toUpperCase().trim();
+
+        if (userFilter && !usuarioCell.includes(userFilter)) return false;
+        if (stateFilter && procState !== stateFilter) return false;
+        if (policyFilter && policyCell !== policyFilter) return false;
+        return true;
+      });
+
+      $('#filter-usuario').on('input',  () => dt.draw());
+      $('#filter-estado').on('change', () => dt.draw());
+      $('#filter-politica').on('change',() => dt.draw());
       $('#btn-reset-filtros').on('click', function(){
         $('#filter-usuario').val('');
         $('#filter-estado').val('');
@@ -250,14 +264,44 @@
         dt.search('').columns().search(''); dt.draw();
       });
 
-      // UX botón
-      const btn = document.getElementById('btn-run-export');
-      if (btn) {
-        btn.addEventListener('click', function() {
-          btn.disabled = true;
-          btn.innerHTML = '<i class="material-icons">hourglass_empty</i> Ejecutando...';
+      // --- Modal Mensaje ---
+      $(document).on('click', '.view-msg', function() {
+        let msg = $(this).data('message') || '';
+        try {
+          const parsed = JSON.parse(msg);
+          msg = JSON.stringify(parsed, null, 2);
+        } catch (e) {}
+        $('#modalMsgBody').text(msg);
+        $('#msgModal').modal('show');
+      });
+
+      // --- Botón Exportar por AJAX ---
+      $('#form-export-sap').on('submit', function(e) {
+        e.preventDefault();
+        const $btn = $('#btn-run-export');
+        $btn.prop('disabled', true).html('<i class="material-icons">hourglass_empty</i> Ejecutando...');
+        $.ajax({
+          url: this.action,
+          method: 'POST',
+          data: $(this).serialize(),
+          headers: {'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')},
+          timeout: 130000
+        })
+        .done(function(resp){
+          const msg = (resp && resp.message) ? resp.message : 'Exportación a SAP ejecutada.';
+          $('#flash').html('<div class="alert alert-success">'+ msg +'</div>');
+          location.reload(); // recarga para ver nuevos registros
+        })
+        .fail(function(xhr){
+          let msg = 'Exportación a SAP falló.';
+          if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+          else if (xhr.responseText) msg = xhr.responseText;
+          $('#flash').html('<div class="alert alert-danger">'+ msg +'</div>');
+        })
+        .always(function(){
+          $btn.prop('disabled', false).html('<i class="material-icons">send</i> Enviar pendientes a SAP');
         });
-      }
+      });
     });
   </script>
 @endpush

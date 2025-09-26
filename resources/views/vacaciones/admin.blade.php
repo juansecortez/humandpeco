@@ -1,6 +1,5 @@
 @php
   use Illuminate\Support\Str;
-
   // Colores RGB por estado (badge)
   function stateColors($state) {
     $s = strtoupper((string)$state);
@@ -35,15 +34,16 @@
 
       <div class="card-body">
 
-        {{-- Flash messages --}}
-        @if (session('status'))  <div class="alert alert-success">{{ session('status') }}</div> @endif
-        @if (session('error'))   <div class="alert alert-danger">{{ session('error') }}</div> @endif
+        <div id="flash">
+          @if (session('status'))  <div class="alert alert-success">{{ session('status') }}</div> @endif
+          @if (session('error'))   <div class="alert alert-danger">{{ session('error') }}</div> @endif
+        </div>
 
-        {{-- ======================= CONTROLES (HEADER BONITO) ======================= --}}
+        {{-- ======================= CONTROLES (HEADER) ======================= --}}
         <div class="row align-items-stretch mb-3">
-          {{-- Botón ETL --}}
+          {{-- Botón ETL (AJAX) --}}
           <div class="col-12 col-lg-3 mb-2 mb-lg-0">
-            <form action="{{ route('vacaciones.runEtl') }}" method="POST" class="w-100">
+            <form id="form-run-etl" action="{{ route('vacaciones.runEtl') }}" method="POST" class="w-100">
               @csrf
               <button type="submit" class="btn btn-rose w-100" id="btn-run-etl">
                 <i class="material-icons">sync</i> Actualizar desde API
@@ -102,7 +102,7 @@
             </div>
           </div>
         </div>
-        {{-- ===================== FIN CONTROLES (HEADER BONITO) ===================== --}}
+        {{-- ===================== FIN CONTROLES ===================== --}}
 
         {{-- TABLA --}}
         <div class="table-responsive">
@@ -119,7 +119,7 @@
                 <th>Step</th>         {{-- 7 --}}
                 <th>Creada</th>       {{-- 8 --}}
                 <th>Resuelta</th>     {{-- 9 --}}
-                <th>Descripción</th>  {{-- 10 --}}
+                <th>Descripción</th>  {{-- 10 -> ícono modal --}}
               </tr>
             </thead>
             <tbody>
@@ -142,7 +142,15 @@
                   <td>{{ $r->step_state }}</td>
                   <td>{{ optional($r->created_at)->format('Y-m-d H:i') }}</td>
                   <td>{{ optional($r->resolution_date)->format('Y-m-d H:i') }}</td>
-                  <td>{{ Str::limit($r->description, 120) }}</td>
+                  <td class="text-center">
+                    @php $desc = $r->description ?? ''; @endphp
+                    <button type="button"
+                            class="btn btn-link btn-info btn-just-icon view-desc"
+                            title="{{ $desc ? 'Ver descripción' : 'Sin descripción' }}"
+                            data-description="{{ e($desc) }}">
+                      <i class="material-icons">message</i>
+                    </button>
+                  </td>
                 </tr>
               @empty
                 <tr><td colspan="11" class="text-center text-muted">No hay solicitudes registradas.</td></tr>
@@ -155,38 +163,54 @@
     </div>
   </div>
 </div>
+
+{{-- Modal descripción --}}
+<div class="modal fade" id="descModal" tabindex="-1" role="dialog" aria-labelledby="descModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="descModalLabel">Descripción de la solicitud</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <pre id="descModalBody" class="mb-0" style="white-space:pre-wrap;"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-rose" data-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 @endsection
 
 @push('css')
   {{-- DataTables CSS (Bootstrap 4) --}}
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap4.min.css">
   <style>
-    /* Header limpio y alineado */
     .filters-card { border:1px solid rgba(0,0,0,.05); box-shadow:none; }
     .filters-card .card-body { padding-top:.75rem; padding-bottom:.75rem; }
     .card .card-body .form-row .form-group { margin-bottom: .5rem; }
     .input-group-text { background:#fff; }
     .form-control-rounded { border-radius: 30px; padding-left: 14px; }
-    /* Ajustes de la tabla */
     table.dataTable tbody td { vertical-align: middle; }
   </style>
 @endpush
 
 @push('js')
-  {{-- DataTables (debe cargarse después de jQuery del layout) --}}
+  {{-- DataTables (después de jQuery del layout) --}}
   <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js"></script>
 
   <script>
     $(function () {
-      // Asegura que DataTables esté disponible
       if (typeof $.fn.DataTable === 'undefined') {
         console.error('DataTables no está cargado.');
         return;
       }
 
-      // --------- Filtro combinado (usuario/estado/política) ----------
-      // Usamos ext.search para combinar los tres controles
+      // --- Filtro combinado (usuario/estado/política) ---
       $.fn.dataTable.ext.search.push(function(settings, data) {
         const usuarioFilter  = ($('#filter-usuario').val() || '').toLowerCase();
         const estadoFilter   = ($('#filter-estado').val()   || '').toUpperCase();
@@ -194,7 +218,7 @@
 
         const usuario  = (data[1] || '').toLowerCase();                 // col 1
         const politica = (data[2] || '');                               // col 2
-        const estado   = (data[6] || '').replace(/<[^>]*>/g,'').toUpperCase().trim(); // col 6: limpia HTML del badge
+        const estado   = (data[6] || '').replace(/<[^>]*>/g,'').toUpperCase().trim(); // col 6
 
         if (usuarioFilter && !usuario.includes(usuarioFilter)) return false;
         if (estadoFilter  && estado !== estadoFilter)          return false;
@@ -202,12 +226,12 @@
         return true;
       });
 
-      // --------- Inicializa DataTable -----------
+      // --- DataTable ---
       const dt = $('#timeoff-table').DataTable({
         pagingType: "full_numbers",
         lengthMenu: [[10, 25, 50, -1],[10, 25, 50, "Todos"]],
         responsive: true,
-        order: [[8, 'desc']], // Creada desc
+        order: [[8, 'desc']], // Creada desc (col 8)
         language: {
           search: "_INPUT_",
           searchPlaceholder: "Buscar en toda la tabla…",
@@ -220,40 +244,68 @@
         },
         columnDefs: [
           {
-            targets: 6, // Estado con badge
+            targets: 6,
             render: function (data, type) {
               if (type === 'sort' || type === 'filter') {
-                return String(data).replace(/<[^>]*>/g,'').trim(); // para ordenar/filtrar por texto, no HTML
+                return String(data).replace(/<[^>]*>/g,'').trim();
               }
               return data;
             }
           },
-          { targets: 10, orderable: false } // Descripción sin orden
+          { targets: 10, orderable: false } // ícono de descripción
         ]
       });
 
-      // --------- Disparadores de filtros ----------
+      // --- Disparadores filtros ---
       $('#filter-usuario').on('input', function(){ dt.draw(); });
       $('#filter-estado').on('change', function(){ dt.draw(); });
       $('#filter-politica').on('change', function(){ dt.draw(); });
-
-      // Reset de filtros
       $('#btn-reset-filtros').on('click', function(){
         $('#filter-usuario').val('');
         $('#filter-estado').val('');
         $('#filter-politica').val('');
-        dt.search('').columns().search('');
-        dt.draw();
+        dt.search('').columns().search(''); dt.draw();
       });
 
-      // UX: botón ETL
-      const btn = document.getElementById('btn-run-etl');
-      if (btn) {
-        btn.addEventListener('click', function() {
-          btn.disabled = true;
-          btn.innerHTML = '<i class="material-icons">hourglass_empty</i> Ejecutando...';
+      // --- Modal descripción ---
+      $(document).on('click', '.view-desc', function() {
+        let msg = $(this).data('description') || '';
+        // si viene JSON lo embellecemos
+        try {
+          const parsed = JSON.parse(msg);
+          msg = JSON.stringify(parsed, null, 2);
+        } catch (e) {}
+        $('#descModalBody').text(msg || '—');
+        $('#descModal').modal('show');
+      });
+
+      // --- Botón ETL por AJAX (no se queda “ejecutando…”) ---
+      $('#form-run-etl').on('submit', function(e){
+        e.preventDefault();
+        const $btn = $('#btn-run-etl');
+        $btn.prop('disabled', true).html('<i class="material-icons">hourglass_empty</i> Ejecutando...');
+        $.ajax({
+          url: this.action,
+          method: 'POST',
+          data: $(this).serialize(),
+          headers: {'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')},
+          timeout: 180000
+        })
+        .done(function(resp){
+          const msg = (resp && resp.message) ? resp.message : 'ETL ejecutado correctamente.';
+          $('#flash').html('<div class="alert alert-success">'+ msg +'</div>');
+          location.reload(); // recarga para ver datos frescos
+        })
+        .fail(function(xhr){
+          let msg = 'ETL falló.';
+          if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+          else if (xhr.responseText) msg = xhr.responseText;
+          $('#flash').html('<div class="alert alert-danger">'+ msg +'</div>');
+        })
+        .always(function(){
+          $btn.prop('disabled', false).html('<i class="material-icons">sync</i> Actualizar desde API');
         });
-      }
+      });
     });
   </script>
 @endpush

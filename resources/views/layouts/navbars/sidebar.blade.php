@@ -1,180 +1,190 @@
-<div class="sidebar" data-color="danger" data-background-color="black" data-image="{{ asset('material') }}/img/sidebarpelet.jpg">
-  <!--
+<div class="sidebar" data-color="danger" data-background-color="black"
+    data-image="{{ asset('material') }}/img/sidebarpelet.jpg">
+    <!--
     Tip 1: You can change the color of the sidebar using: data-color="purple | azure | green | orange | danger"
 
     Tip 2: you can also add an image using data-image tag
 -->
-<div class="logo text-center">
+    <div class="logo text-center">
 
-  <!-- Logo grande (sidebar abierto) -->
-  <a href="#" class="logo-big">
-    <img src="{{ asset('material/img/logo2.png') }}" alt="Logo grande">
-  </a>
-
-  <!-- Logo chico (sidebar cerrado) -->
-  <a href="#" class="logo-small">
-    <img src="{{ asset('material/img/logo3.png') }}" alt="Logo chico">
-  </a>
-
-  <a class="simple-text logo-normal d-block">
-    {{ __('HUMANDPECO') }}
-  </a>
-
-  <style>
-    /* Tamaños (ajusta a gusto) */
-    .sidebar .logo .logo-big img  { max-width:150px; height:auto; }
-    .sidebar .logo .logo-small img{ max-width:50px;  height:auto; }
-
-    /* Estado ABIERTO: mostrar solo grande */
-    .sidebar .logo .logo-big   { display:block !important; }
-    .sidebar .logo .logo-small { display:none  !important; }
-
-    /* Estado CERRADO (mini): invertir */
-    body.sidebar-mini .sidebar .logo .logo-big   { display:none  !important; }
-    body.sidebar-mini .sidebar .logo .logo-small { display:block !important; }
-
-    /* (Opcional) Ocultar el texto en modo mini */
-    body.sidebar-mini .sidebar .logo .logo-normal { display:none !important; }
-  </style>
-</div>
-
-
-
-
-
-
-
-  <div class="sidebar-wrapper">
-    <div class="user">
-      <div class="photo">
-        <img src="{{ auth()->user()->profilePicture() }}" />
-      </div>
-      <div class="user-info">
-        <a data-toggle="collapse" href="#collapseExample" class="username">
-          <span>
-            {{ auth()->user()->name }}
-            <b class="caret"></b>
-          </span>
+        <!-- Logo grande (sidebar abierto) -->
+        <a href="#" class="logo-big">
+            <img src="{{ asset('material/img/logo2.png') }}" alt="Logo grande">
         </a>
-        <div class="collapse" id="collapseExample">
-          <ul class="nav">
-            <li class="nav-item">
-              <a class="nav-link" href="{{ route('profile.edit') }}">
-                <span class="sidebar-mini"> MP </span>
-                <span class="sidebar-normal"> My Profile </span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#">
-                <span class="sidebar-mini"> S </span>
-                <span class="sidebar-normal"> Settings </span>
-              </a>
-            </li>
-          </ul>
-        </div>
-      </div>
+
+        <!-- Logo chico (sidebar cerrado) -->
+        <a href="#" class="logo-small">
+            <img src="{{ asset('material/img/logo3.png') }}" alt="Logo chico">
+        </a>
+
+        <a class="simple-text logo-normal d-block">
+            {{ __('HUMANDPECO') }}
+        </a>
+
+        <style>
+            .username-text {
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                /* máximo 2 líneas */
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 150px;
+                /* ajusta al ancho que necesites */
+                white-space: normal;
+            }
+
+            /* Tamaños (ajusta a gusto) */
+            .sidebar .logo .logo-big img {
+                max-width: 150px;
+                height: auto;
+            }
+
+            .sidebar .logo .logo-small img {
+                max-width: 50px;
+                height: auto;
+            }
+
+            /* Estado ABIERTO: mostrar solo grande */
+            .sidebar .logo .logo-big {
+                display: block !important;
+            }
+
+            .sidebar .logo .logo-small {
+                display: none !important;
+            }
+
+            /* Estado CERRADO (mini): invertir */
+            body.sidebar-mini .sidebar .logo .logo-big {
+                display: none !important;
+            }
+
+            body.sidebar-mini .sidebar .logo .logo-small {
+                display: block !important;
+            }
+
+            /* (Opcional) Ocultar el texto en modo mini */
+            body.sidebar-mini .sidebar .logo .logo-normal {
+                display: none !important;
+            }
+        </style>
     </div>
-    <ul class="nav">
-      <li class="nav-item{{ $activePage == 'dashboard' ? ' active' : '' }}">
-        <a class="nav-link" href="{{ route('home') }}">
-          <i class="material-icons">dashboard</i>
-            <p>{{ __('Dashboard') }}</p>
-        </a>
-      </li>
-      <li class="nav-item {{ ($menuParent == 'laravel' || $activePage == 'dashboard') ? ' active' : '' }}">
-        <a class="nav-link" data-toggle="collapse" href="#laravelExample" {{ ($menuParent == 'laravel' || $activePage == 'dashboard') ? ' aria-expanded="true"' : '' }}>
-          <i><img style="width:25px" src="{{ asset('material') }}/img/laravel.svg"></i>
-          <p>{{ __('Laravel Examples') }}
-            <b class="caret"></b>
-          </p>
-        </a>
-        <div class="collapse {{ ($menuParent == 'dashboard' || $menuParent == 'laravel') ? ' show' : '' }}" id="laravelExample">
-          <ul class="nav">
-            <li class="nav-item{{ $activePage == 'profile' ? ' active' : '' }}">
-              <a class="nav-link" href="{{ route('profile.edit') }}">
-                <span class="sidebar-mini"> UP </span>
-                <span class="sidebar-normal">{{ __('User profile') }} </span>
-              </a>
-            </li>
-            @can('manage-users', App\User::class)
-              <li class="nav-item{{ $activePage == 'role-management' ? ' active' : '' }}">
-                <a class="nav-link" href="{{ route('role.index') }}">
-                  <span class="sidebar-mini"> RM </span>
-                  <span class="sidebar-normal"> {{ __('Role Management') }} </span>
+
+
+
+
+
+
+
+    <div class="sidebar-wrapper">
+        <div class="user">
+            <div class="photo">
+                <img src="{{ auth()->user()->profilePicture() }}" />
+            </div>
+            <div class="user-info">
+                <a data-toggle="collapse" href="#collapseExample" class="username">
+                    <span class="username-text">
+                        {{ auth()->user()->name }}
+                        <b class="caret"></b>
+                    </span>
                 </a>
-              </li>
-            @endcan
-            @can('manage-users', App\User::class)
-              <li class="nav-item{{ $activePage == 'user-management' ? ' active' : '' }}">
-                <a class="nav-link" href="{{ route('user.index') }}">
-                  <span class="sidebar-mini"> UM </span>
-                  <span class="sidebar-normal"> {{ __('User Management') }} </span>
-                </a>
-              </li>
-            @endcan
-            @can('manage-items', App\User::class)
-              <li class="nav-item{{ $activePage == 'category-management' ? ' active' : '' }}">
-                <a class="nav-link" href="{{ route('category.index') }}">
-                  <span class="sidebar-mini"> CM </span>
-                  <span class="sidebar-normal"> {{ __('Category Management') }} </span>
-                </a>
-              </li>
-            @endcan
-            @can('manage-items', App\User::class)
-              <li class="nav-item{{ $activePage == 'tag-management' ? ' active' : '' }}">
-                <a class="nav-link" href="{{ route('tag.index') }}">
-                  <span class="sidebar-mini"> TM </span>
-                  <span class="sidebar-normal"> {{ __('Tag Management') }} </span>
-                </a>
-              </li>
-            @endcan
-            @can('manage-items', App\User::class)
-              <li class="nav-item{{ $activePage == 'item-management' ? ' active' : '' }}">
-                <a class="nav-link" href="{{ route('item.index') }}">
-                  <span class="sidebar-mini"> IM </span>
-                  <span class="sidebar-normal"> {{ __('Item Management') }} </span>
-                </a>
-              </li>
-            @else
-              <li class="nav-item{{ $activePage == 'item-management' ? ' active' : '' }}">
-                <a class="nav-link" href="{{ route('item.index') }}">
-                  <span class="sidebar-mini"> IM </span>
-                  <span class="sidebar-normal"> {{ __('Items') }} </span>
-                </a>
-              </li>
-            @endcan
-          </ul>
+                <div class="collapse" id="collapseExample">
+                    <ul class="nav">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ route('profile.edit') }}">
+                                <span class="sidebar-mini"> MP </span>
+                                <span class="sidebar-normal"> My Profile </span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="logout-btn" href="{{ route('logout') }}"
+                                onclick="event.preventDefault();document.getElementById('logout-form').submit();">{{ __('Log out') }}</a>
+                            <span class="sidebar-mini"> L </span>
+                            <span class="sidebar-normal"> Logout </span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+            </div>
         </div>
-      </li>
 
-
-      <li class="nav-item {{ $menuParent == 'vacaciones' ? 'active' : '' }}">
-        <a class="nav-link" data-toggle="collapse" href="#VacaExamples" {{ $menuParent == 'Vacaciones' ? 'aria-expanded="true"' : '' }}>
-          <i class="material-icons">image</i>
-          <p> {{ __('Vacaciones') }}
-            <b class="caret"></b>
-          </p>
-        </a>
-        <div class="collapse{{ $menuParent == 'vacas' ? ' show' : '' }}" id="VacaExamples">
-          <ul class="nav">
-            <li class="nav-item">
-              <a class="nav-link" href="{{ route('vacaciones.admin') }}">
-                <span class="sidebar-mini"> AV </span>
-                <span class="sidebar-normal"> {{ __('Administrar Vacaciones') }} </span>
-              </a>
+        <ul class="nav">
+            <li class="nav-item{{ $activePage == 'dashboard' ? ' active' : '' }}">
+                <a class="nav-link" href="{{ route('home') }}">
+                    <i class="material-icons">dashboard</i>
+                    <p>{{ __('Dashboard') }}</p>
+                </a>
             </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{{ route('vacaciones.status') }}">
-                <span class="sidebar-mini"> EV </span>
-                <span class="sidebar-normal"> {{ __('Estatus de Vacaciones') }} </span>
-              </a>
+            <li class="nav-item {{ $menuParent == 'laravel' || $activePage == 'dashboard' ? ' active' : '' }}">
+                <a class="nav-link" data-toggle="collapse" href="#laravelExample"
+                    {{ $menuParent == 'laravel' || $activePage == 'dashboard' ? ' aria-expanded="true"' : '' }}>
+                    <i class="material-icons">settings</i>
+                    <p>{{ __('Administración') }}
+                        <b class="caret"></b>
+                    </p>
+                </a>
+                <div class="collapse {{ $menuParent == 'dashboard' || $menuParent == 'laravel' ? ' show' : '' }}"
+                    id="laravelExample">
+                    <ul class="nav">
+                        <li class="nav-item{{ $activePage == 'profile' ? ' active' : '' }}">
+                            <a class="nav-link" href="{{ route('profile.edit') }}">
+                                <span class="sidebar-mini"> UP </span>
+                                <span class="sidebar-normal">{{ __('User profile') }} </span>
+                            </a>
+                        </li>
+                        @can('manage-users', App\User::class)
+                            <li class="nav-item{{ $activePage == 'role-management' ? ' active' : '' }}">
+                                <a class="nav-link" href="{{ route('role.index') }}">
+                                    <span class="sidebar-mini"> RM </span>
+                                    <span class="sidebar-normal"> {{ __('Role Management') }} </span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('manage-users', App\User::class)
+                            <li class="nav-item{{ $activePage == 'user-management' ? ' active' : '' }}">
+                                <a class="nav-link" href="{{ route('user.index') }}">
+                                    <span class="sidebar-mini"> UM </span>
+                                    <span class="sidebar-normal"> {{ __('User Management') }} </span>
+                                </a>
+                            </li>
+                        @endcan
+
+
+
+                    </ul>
+                </div>
             </li>
-           
-          </ul>
-        </div>
-      </li>
 
 
+            <li class="nav-item {{ $menuParent == 'vacaciones' ? 'active' : '' }}">
+                <a class="nav-link" data-toggle="collapse" href="#VacaExamples"
+                    {{ $menuParent == 'Vacaciones' ? 'aria-expanded="true"' : '' }}>
+                    <i class="material-icons">flight</i>
+                    <p> {{ __('Vacaciones') }}
+                        <b class="caret"></b>
+                    </p>
+                </a>
+                <div class="collapse{{ $menuParent == 'vacas' ? ' show' : '' }}" id="VacaExamples">
+                    <ul class="nav">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ route('vacaciones.admin') }}">
+                                <span class="sidebar-mini"> AV </span>
+                                <span class="sidebar-normal"> {{ __('Administrar Vacaciones') }} </span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ route('vacaciones.status') }}">
+                                <span class="sidebar-mini"> EV </span>
+                                <span class="sidebar-normal"> {{ __('Estatus de Vacaciones') }} </span>
+                            </a>
+                        </li>
+
+                    </ul>
+                </div>
+            </li>
+
+            <!-- (sidebar cerrado)
       <li class="nav-item {{ $menuParent == 'pages' ? 'active' : '' }}">
         <a class="nav-link" data-toggle="collapse" href="#pagesExamples" {{ $menuParent == 'Pages' ? 'aria-expanded="true"' : '' }}>
           <i class="material-icons">image</i>
@@ -367,8 +377,8 @@
           <i class="material-icons">widgets</i>
           <p> Widgets </p>
         </a>
-      </li>
-    
-    </ul>
-  </div>
+      </li> -->
+
+        </ul>
+    </div>
 </div>

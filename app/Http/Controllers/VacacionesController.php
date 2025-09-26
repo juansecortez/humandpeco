@@ -7,6 +7,7 @@ use Symfony\Component\Process\Process;
 
 use App\Models\TimeOffRequest;
 use App\Models\SapTimeOffExport; // <-- añade este modelo
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 
 class VacacionesController extends Controller
 {
@@ -42,11 +43,19 @@ class VacacionesController extends Controller
 
         if (!$process->isSuccessful()) {
             $err = trim($process->getErrorOutput() ?: $process->getOutput());
+            if ($request->ajax()) {
+                return response()->json(['ok' => false, 'message' => 'ETL falló: ' . $err], 500);
+            }
             return back()->with('error', 'ETL falló: ' . $err);
         }
+
         $out = trim($process->getOutput());
+        if ($request->ajax()) {
+            return response()->json(['ok' => true, 'message' => ($out ?: 'ETL ejecutado correctamente.')]);
+        }
         return back()->with('status', $out ?: 'ETL ejecutado correctamente.');
     }
+
 
     /** Estatus de envíos a SAP */
     public function status()
@@ -73,13 +82,23 @@ class VacacionesController extends Controller
         $python = env('PYTHON_BIN', 'python');
         $script = base_path('scripts/export_time_off_to_sap.py');
 
-        $process = new Process([$python, $script], base_path(), null, null, 240);
-        $process->run();
+        $process = new Process([$python, $script], base_path());
+        $process->setTimeout(90);       // tiempo total (seg)
+        $process->setIdleTimeout(30);   // sin output durante 30s => timeout
+
+        try {
+            $process->run();            // ejecuta y espera
+        } catch (ProcessTimedOutException $e) {
+            // Diferencia útil en el mensaje:
+            $kind = $e->isGeneralTimeout() ? 'tiempo total agotado' : 'sin respuesta (idle timeout)';
+            return back()->with('error', "Exportación a SAP: $kind. Verifica conectividad/credenciales con SAP.");
+        }
 
         if (!$process->isSuccessful()) {
             $err = trim($process->getErrorOutput() ?: $process->getOutput());
             return back()->with('error', 'Exportación a SAP falló: ' . $err);
         }
+
         $out = trim($process->getOutput());
         return back()->with('status', $out ?: 'Exportación a SAP ejecutada.');
     }
