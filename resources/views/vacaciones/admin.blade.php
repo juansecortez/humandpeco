@@ -57,14 +57,14 @@
               <div class="card-body py-2">
                 <div class="form-row">
 
-                  {{-- Usuario --}}
+                  {{-- Usuario / Nombre --}}
                   <div class="form-group col-12 col-xl-5 mb-2">
-                    <label for="filter-usuario" class="mb-1 text-muted"><small>Usuario</small></label>
+                    <label for="filter-usuario" class="mb-1 text-muted"><small>Usuario o Nombre</small></label>
                     <div class="input-group input-group-merged">
                       <div class="input-group-prepend">
                         <span class="input-group-text"><i class="material-icons">person_search</i></span>
                       </div>
-                      <input type="text" id="filter-usuario" class="form-control" placeholder="Buscar usuario (internalId)">
+                      <input type="text" id="filter-usuario" class="form-control" placeholder="Buscar usuario (internalId) o nombre">
                     </div>
                   </div>
 
@@ -111,50 +111,53 @@
               <tr>
                 <th>Request ID</th>   {{-- 0 --}}
                 <th>Usuario</th>      {{-- 1 --}}
-                <th>Política</th>     {{-- 2 --}}
-                <th>Desde</th>        {{-- 3 --}}
-                <th>Hasta</th>        {{-- 4 --}}
-                <th>Días</th>         {{-- 5 --}}
-                <th>Estado</th>       {{-- 6 (badge) --}}
-                <th>Step</th>         {{-- 7 --}}
-                <th>Creada</th>       {{-- 8 --}}
-                <th>Resuelta</th>     {{-- 9 --}}
-                <th>Descripción</th>  {{-- 10 -> ícono modal --}}
+                <th>Nombre</th>       {{-- 2 (NUEVA) --}}
+                <th>Política</th>     {{-- 3 --}}
+                <th>Desde</th>        {{-- 4 --}}
+                <th>Hasta</th>        {{-- 5 --}}
+                <th>Días</th>         {{-- 6 --}}
+                <th>Estado</th>       {{-- 7 (badge) --}}
+                <th>Step</th>         {{-- 8 --}}
+                <th>Creada</th>       {{-- 9 --}}
+                <th>Resuelta</th>     {{-- 10 --}}
+                <th>Descripción</th>  {{-- 11 -> ícono modal --}}
               </tr>
             </thead>
             <tbody>
-              @forelse($requests as $r)
-                @php [$bg,$fg] = stateColors($r->state); @endphp
-                <tr>
-                  <td>{{ $r->request_id }}</td>
-                  <td>{{ $r->issuer_employee_internal_id }}</td>
-                  <td>{{ $r->policy_name }}</td>
-                  <td>{{ optional($r->from_date)->format('Y-m-d') }}</td>
-                  <td>{{ optional($r->to_date)->format('Y-m-d') }}</td>
-                  <td>{{ $r->amount_requested }}</td>
-                  <td>
-                    <span class="badge state-badge"
-                          data-state="{{ strtoupper($r->state) }}"
-                          style="background-color: {{ $bg }}; color: {{ $fg }}; border-radius:12px; padding:6px 10px; font-weight:600;">
-                      {{ strtoupper($r->state) }}
-                    </span>
-                  </td>
-                  <td>{{ $r->step_state }}</td>
-                  <td>{{ optional($r->created_at)->format('Y-m-d H:i') }}</td>
-                  <td>{{ optional($r->resolution_date)->format('Y-m-d H:i') }}</td>
-                  <td class="text-center">
-                    @php $desc = $r->description ?? ''; @endphp
-                    <button type="button"
-                            class="btn btn-link btn-info btn-just-icon view-desc"
-                            title="{{ $desc ? 'Ver descripción' : 'Sin descripción' }}"
-                            data-description="{{ e($desc) }}">
-                      <i class="material-icons">message</i>
-                    </button>
-                  </td>
-                </tr>
-              @empty
-                <tr><td colspan="11" class="text-center text-muted">No hay solicitudes registradas.</td></tr>
-              @endforelse
+              @if(($requests ?? collect())->count())
+                @foreach($requests as $r)
+                  @php [$bg,$fg] = stateColors($r->state); @endphp
+                  <tr>
+                    <td>{{ $r->request_id }}</td>
+                    <td>{{ $r->issuer_employee_internal_id }}</td>
+                    <td>{{ $r->issuer_full_name }}</td> {{-- NUEVA --}}
+                    <td>{{ $r->policy_name }}</td>
+                    <td>{{ optional($r->from_date)->format('Y-m-d') }}</td>
+                    <td>{{ optional($r->to_date)->format('Y-m-d') }}</td>
+                    <td>{{ $r->amount_requested }}</td>
+                    <td>
+                      <span class="badge state-badge"
+                            data-state="{{ strtoupper($r->state) }}"
+                            style="background-color: {{ $bg }}; color: {{ $fg }}; border-radius:12px; padding:6px 10px; font-weight:600;">
+                        {{ strtoupper($r->state) }}
+                      </span>
+                    </td>
+                    <td>{{ $r->step_state }}</td>
+                    <td>{{ optional($r->created_at)->format('Y-m-d H:i') }}</td>
+                    <td>{{ optional($r->resolution_date)->format('Y-m-d H:i') }}</td>
+                    <td class="text-center">
+                      @php $desc = $r->description ?? ''; @endphp
+                      <button type="button"
+                              class="btn btn-link btn-info btn-just-icon view-desc"
+                              title="{{ $desc ? 'Ver descripción' : 'Sin descripción' }}"
+                              data-description="{{ e($desc) }}">
+                        <i class="material-icons">message</i>
+                      </button>
+                    </td>
+                  </tr>
+                @endforeach
+              @endif
+              {{-- IMPORTANTE: no renderizamos fila "colspan" cuando está vacío --}}
             </tbody>
           </table>
         </div>
@@ -216,13 +219,17 @@
         const estadoFilter   = ($('#filter-estado').val()   || '').toUpperCase();
         const politicaFilter = ($('#filter-politica').val() || '');
 
-        const usuario  = (data[1] || '').toLowerCase();                 // col 1
-        const politica = (data[2] || '');                               // col 2
-        const estado   = (data[6] || '').replace(/<[^>]*>/g,'').toUpperCase().trim(); // col 6
+        // Indices actualizados por la nueva columna "Nombre"
+        const usuario  = (data[1] || '').toLowerCase(); // col 1 -> internalId
+        const nombre   = (data[2] || '').toLowerCase(); // col 2 -> full_name (NUEVA)
+        const politica = (data[3] || '');               // col 3
+        const estado   = (data[7] || '').replace(/<[^>]*>/g,'').toUpperCase().trim(); // col 7
 
-        if (usuarioFilter && !usuario.includes(usuarioFilter)) return false;
-        if (estadoFilter  && estado !== estadoFilter)          return false;
-        if (politicaFilter && politica !== politicaFilter)     return false;
+        // Usuario o Nombre
+        if (usuarioFilter && !(usuario.includes(usuarioFilter) || nombre.includes(usuarioFilter))) return false;
+
+        if (estadoFilter  && estado !== estadoFilter)      return false;
+        if (politicaFilter && politica !== politicaFilter) return false;
         return true;
       });
 
@@ -231,7 +238,7 @@
         pagingType: "full_numbers",
         lengthMenu: [[10, 25, 50, -1],[10, 25, 50, "Todos"]],
         responsive: true,
-        order: [[8, 'desc']], // Creada desc (col 8)
+        order: [[9, 'desc']], // Creada desc (col 9) -- ACTUALIZADO
         language: {
           search: "_INPUT_",
           searchPlaceholder: "Buscar en toda la tabla…",
@@ -240,11 +247,12 @@
           info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
           infoEmpty: "Mostrando 0 a 0 de 0 registros",
           infoFiltered: "(filtrado de _MAX_ registros totales)",
+          emptyTable: "No hay solicitudes registradas.", // << evita fila con colspan
           paginate: { first: "Primero", last: "Último", next: "Siguiente", previous: "Anterior" }
         },
         columnDefs: [
           {
-            targets: 6,
+            targets: 7, // estado (badge) -- ACTUALIZADO
             render: function (data, type) {
               if (type === 'sort' || type === 'filter') {
                 return String(data).replace(/<[^>]*>/g,'').trim();
@@ -252,7 +260,7 @@
               return data;
             }
           },
-          { targets: 10, orderable: false } // ícono de descripción
+          { targets: 11, orderable: false } // ícono de descripción -- ACTUALIZADO
         ]
       });
 
@@ -270,16 +278,12 @@
       // --- Modal descripción ---
       $(document).on('click', '.view-desc', function() {
         let msg = $(this).data('description') || '';
-        // si viene JSON lo embellecemos
-        try {
-          const parsed = JSON.parse(msg);
-          msg = JSON.stringify(parsed, null, 2);
-        } catch (e) {}
+        try { const parsed = JSON.parse(msg); msg = JSON.stringify(parsed, null, 2); } catch (e) {}
         $('#descModalBody').text(msg || '—');
         $('#descModal').modal('show');
       });
 
-      // --- Botón ETL por AJAX (no se queda “ejecutando…”) ---
+      // --- Botón ETL por AJAX ---
       $('#form-run-etl').on('submit', function(e){
         e.preventDefault();
         const $btn = $('#btn-run-etl');
@@ -294,7 +298,7 @@
         .done(function(resp){
           const msg = (resp && resp.message) ? resp.message : 'ETL ejecutado correctamente.';
           $('#flash').html('<div class="alert alert-success">'+ msg +'</div>');
-          location.reload(); // recarga para ver datos frescos
+          location.reload();
         })
         .fail(function(xhr){
           let msg = 'ETL falló.';

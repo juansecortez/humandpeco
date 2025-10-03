@@ -81,6 +81,7 @@ SQL_BASE = f"""
 SELECT
   r.request_id,
   r.issuer_employee_internal_id,
+  r.issuer_full_name,              -- <<< NUEVO
   r.policy_name,
   r.from_date,
   r.to_date,
@@ -131,6 +132,7 @@ USING (SELECT
     ? AS request_id,
     ? AS processed_state,
     ? AS issuer_employee_internal_id,
+    ? AS issuer_full_name,              -- <<< NUEVO
     ? AS usuario_id,
     ? AS codigo_col,
     ? AS policy_name,
@@ -150,6 +152,7 @@ WHEN MATCHED THEN
   UPDATE SET
     processed_state = S.processed_state,
     issuer_employee_internal_id = S.issuer_employee_internal_id,
+    issuer_full_name            = S.issuer_full_name,       -- <<< NUEVO
     usuario_id  = S.usuario_id,
     codigo_col  = S.codigo_col,
     policy_name = S.policy_name,
@@ -164,10 +167,10 @@ WHEN MATCHED THEN
     response_text   = S.response_text,
     responded_at    = S.responded_at
 WHEN NOT MATCHED THEN
-  INSERT (request_id, processed_state, issuer_employee_internal_id, usuario_id, codigo_col,
+  INSERT (request_id, processed_state, issuer_employee_internal_id, issuer_full_name, usuario_id, codigo_col,
           policy_name, clave, infotipo, from_date, to_date, dias,
           request_url, response_status, response_ok, response_text, created_at, responded_at)
-  VALUES (S.request_id, S.processed_state, S.issuer_employee_internal_id, S.usuario_id, S.codigo_col,
+  VALUES (S.request_id, S.processed_state, S.issuer_employee_internal_id, S.issuer_full_name, S.usuario_id, S.codigo_col,
           S.policy_name, S.clave, S.infotipo, S.from_date, S.to_date, S.dias,
           S.request_url, S.response_status, S.response_ok, S.response_text, SYSUTCDATETIME(), S.responded_at);
 """
@@ -219,8 +222,6 @@ def call_sap(payload):
 
     url = f"{SAP_BASE_URL}?sap-client={SAP_CLIENT}"
     if SAP_KEY:
-        # agrega 'Key' también como query param
-        # (si usas form, va tanto Key en query como los demás en form)
         url += f"&Key={requests.utils.quote(SAP_KEY)}"
 
     try:
@@ -232,7 +233,6 @@ def call_sap(payload):
                              timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
                              allow_redirects=False)
         else:
-            # default: todo en query params
             r = SESSION.post(url, params=payload, headers=SESSION.headers,
                              auth=auth, verify=verify,
                              timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
@@ -251,11 +251,11 @@ def call_sap(payload):
     except Exception as ex:
         return (None, False, f"ERROR_REQUEST: {ex}")
 
-def upsert(cur, *, request_id, processed_state, email, usuario_id, codigo_col,
+def upsert(cur, *, request_id, processed_state, email, issuer_full_name, usuario_id, codigo_col,
            policy_name, clave, infotipo, from_date, to_date, dias,
            request_url, response_status, response_ok, response_text):
     row = (
-        request_id, processed_state, email, usuario_id, codigo_col,
+        request_id, processed_state, email, issuer_full_name, usuario_id, codigo_col,
         policy_name, clave, infotipo, from_date, to_date, dias,
         request_url, response_status, 1 if response_ok else 0, response_text
     )
@@ -284,6 +284,7 @@ def process():
         for row in rows:
             request_id = row.request_id
             email      = row.issuer_employee_internal_id
+            full_name  = (row.issuer_full_name or '').strip() if hasattr(row, 'issuer_full_name') else ''
             usuario_id = row.usuario_id
             policy     = (row.policy_name or '').strip()
             from_date  = row.from_date
@@ -291,6 +292,13 @@ def process():
             dias       = row.amount_requested
             state      = (row.state or '').upper()
             codigo_col = row.CodigoCol
+
+            # fallback de nombre si viniera vacío
+            if not full_name:
+                if email and '@' in email:
+                    full_name = email.split('@', 1)[0]
+                else:
+                    full_name = email or None
 
             clave = policy_to_clave(policy)
 
@@ -305,15 +313,13 @@ def process():
 
             # --- lógica de decisión ---
             if state == 'APPROVED':
-                # reintenta si no hay fila aún o si la última no está OK
                 if last and (str(last.processed_state or '').upper() == 'APPROVED') and int(last.response_ok or 0) == 1:
-                    must_call_sap = False  # ya quedó OK
+                    must_call_sap = False
                 else:
                     if not clave or not codigo_col:
-                        # datos incompletos => sólo upsert con mensaje de error (sin llamar SAP)
                         req_url = build_log_url('INS?', codigo_col, from_date, to_date, (clave or '??'), dias)
                         upsert(cur,
-                            request_id=request_id, processed_state=state, email=email, usuario_id=usuario_id,
+                            request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
                             codigo_col=codigo_col, policy_name=policy, clave=(clave or '??'), infotipo=INFOTIPO,
                             from_date=from_date, to_date=to_date, dias=dias,
                             request_url=req_url, response_status=(last.response_status if last else None),
@@ -323,19 +329,17 @@ def process():
                     accion = 'INS'; must_call_sap = True
 
             elif state == 'CANCELLED':
-                # sólo manda DEL si ya hubo INS OK; si no, ni siquiera upsert (no contaminar la tabla)
                 if not had_approved_ok:
                     print(f" - req {request_id}: CANCELLED sin APPROVED OK previo -> skip total", flush=True)
                     continue
-                # si ya está CANCELLED OK, no reintenta
                 if last and (str(last.processed_state or '').upper() == 'CANCELLED') and int(last.response_ok or 0) == 1:
                     must_call_sap = False
-                    accion = 'DEL'  # para url/log visible
+                    accion = 'DEL'
                 else:
                     if not clave or not codigo_col:
                         req_url = build_log_url('DEL?', codigo_col, from_date, to_date, (clave or '??'), dias)
                         upsert(cur,
-                            request_id=request_id, processed_state=state, email=email, usuario_id=usuario_id,
+                            request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
                             codigo_col=codigo_col, policy_name=policy, clave=(clave or '??'), infotipo=INFOTIPO,
                             from_date=from_date, to_date=to_date, dias=dias,
                             request_url=req_url, response_status=(last.response_status if last else None),
@@ -345,10 +349,8 @@ def process():
                     accion = 'DEL'; must_call_sap = True
 
             else:
-                # otros estados no se exportan
                 continue
 
-            # arma URL visible en UI (para inspección)
             req_url = build_log_url(accion or '?', codigo_col, from_date, to_date, (clave or '??'), dias)
 
             if must_call_sap and accion in ('INS','DEL'):
@@ -365,21 +367,19 @@ def process():
                 status, ok, text = call_sap(payload)
                 msg = f"ACCION={accion} | {text}"
                 upsert(cur,
-                    request_id=request_id, processed_state=state, email=email, usuario_id=usuario_id,
+                    request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
                     codigo_col=codigo_col, policy_name=policy, clave=str(clave), infotipo=INFOTIPO,
                     from_date=from_date, to_date=to_date, dias=dias,
                     request_url=req_url, response_status=status, response_ok=ok, response_text=msg)
             else:
-                # No se llamó SAP (ya estaba OK o cancelado sin INS OK). Actualiza/garantiza la fila coherente.
                 status = last.response_status if last else None
                 okflag = (int(last.response_ok or 0) == 1) if last else False
                 msg = (last.response_text if last else "PENDIENTE")
                 if state == 'CANCELLED' and not had_approved_ok:
-                    # no escribir nada si nunca hubo INS OK (tabla limpia)
                     pass
                 else:
                     upsert(cur,
-                        request_id=request_id, processed_state=state, email=email, usuario_id=usuario_id,
+                        request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
                         codigo_col=codigo_col, policy_name=policy, clave=str(clave or '??'), infotipo=INFOTIPO,
                         from_date=from_date, to_date=to_date, dias=dias,
                         request_url=req_url, response_status=status, response_ok=okflag, response_text=msg)

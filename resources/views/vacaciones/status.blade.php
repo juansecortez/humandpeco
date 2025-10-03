@@ -57,12 +57,12 @@
               <div class="card-body py-2">
                 <div class="form-row">
                   <div class="form-group col-12 col-xl-5 mb-2">
-                    <label class="mb-1 text-muted"><small>Usuario</small></label>
+                    <label class="mb-1 text-muted"><small>Usuario / Nombre</small></label>
                     <div class="input-group">
                       <div class="input-group-prepend">
                         <span class="input-group-text"><i class="material-icons">person_search</i></span>
                       </div>
-                      <input type="text" id="filter-usuario" class="form-control" placeholder="Buscar usuario (usuario_id o correo)">
+                      <input type="text" id="filter-usuario" class="form-control" placeholder="Buscar usuario, correo o nombre">
                     </div>
                   </div>
 
@@ -102,69 +102,66 @@
           <table id="sap-exports-table" class="table table-striped table-no-bordered table-hover" width="100%">
             <thead class="text-primary">
               <tr>
-                {{-- Quitamos: ID, Clave, Infotipo, HTTP, Respondido --}}
                 <th>Request ID</th>     {{-- 0 --}}
-                <th>Usuario</th>        {{-- 1 --}}
-                <th>CódigoCol</th>      {{-- 2 --}}
-                <th>Política</th>       {{-- 3 --}}
-                <th>Desde</th>          {{-- 4 --}}
-                <th>Hasta</th>          {{-- 5 --}}
-                <th>Días</th>           {{-- 6 --}}
-                <th>Estado</th>         {{-- 7 badge --}}
-                <th>Resultado</th>      {{-- 8 badge --}}
-                <th>Creado</th>         {{-- 9 --}}
-                <th>Mensaje</th>        {{-- 10 icono -> modal --}}
-                <th>URL</th>            {{-- 11 --}}
+                <th>Usuario</th>        {{-- 1 (usuario_id + correo) --}}
+                <th>Nombre</th>         {{-- 2 (issuer_full_name) --}}
+                <th>CódigoCol</th>      {{-- 3 --}}
+                <th>Política</th>       {{-- 4 --}}
+                <th>Desde</th>          {{-- 5 --}}
+                <th>Hasta</th>          {{-- 6 --}}
+                <th>Días</th>           {{-- 7 --}}
+                <th>Estado</th>         {{-- 8 badge --}}
+                <th>Resultado</th>      {{-- 9 badge --}}
+                <th>Creado</th>         {{-- 10 --}}
+                <th>Mensaje</th>        {{-- 11 icono -> modal --}}
+                <th>URL</th>            {{-- 12 (oculta) --}}
               </tr>
             </thead>
             <tbody>
-              @forelse($exports as $e)
-                @php
-                  [$bgS, $fgS] = stateColors($e->processed_state);
-                  [$bgR, $fgR, $labR] = resultColors($e->response_ok, $e->response_status);
-                  $msg = $e->response_text ?? '';
-                @endphp
-                <tr>
-                  <td>{{ $e->request_id }}</td>
-                  <td>
-                    {{ $e->usuario_id ?: Str::before($e->issuer_employee_internal_id, '@') }}
-                    <small class="text-muted d-block">{{ $e->issuer_employee_internal_id }}</small>
-                  </td>
-                  <td>{{ $e->codigo_col }}</td>
-                  <td>{{ $e->policy_name }}</td>
-                  <td>{{ optional($e->from_date)->format('Y-m-d') }}</td>
-                  <td>{{ optional($e->to_date)->format('Y-m-d') }}</td>
-                  <td>{{ $e->dias }}</td>
-                  <td>
-                    <span class="badge" style="background-color: {{ $bgS }}; color: {{ $fgS }}; border-radius:12px; padding:6px 10px; font-weight:600;">
-                      {{ strtoupper($e->processed_state) }}
-                    </span>
-                  </td>
-                  <td>
-                    <span class="badge" style="background-color: {{ $bgR }}; color: {{ $fgR }}; border-radius:12px; padding:6px 10px; font-weight:600;">
-                      {{ $labR }}
-                    </span>
-                  </td>
-                  <td>{{ optional($e->created_at)->format('Y-m-d H:i') }}</td>
-                  <td>
-                    <button type="button"
-                      class="btn btn-link btn-info btn-just-icon view-msg"
-                      title="Ver mensaje"
-                      data-message="{{ e($msg) }}">
-                      <i class="material-icons">message</i>
-                    </button>
-                  </td>
-                  <td>
-                    @if($e->request_url)
-                      <a href="{{ $e->request_url }}" target="_blank" rel="noopener" class="btn btn-link btn-info btn-just-icon" title="Abrir URL">
-                        <i class="material-icons">open_in_new</i>
-                      </a>
-                    @endif
-                  </td>
-                </tr>
-              @empty
-                <tr><td colspan="12" class="text-center text-muted">Aún no hay registros.</td></tr>
-              @endforelse
+              @if(($exports ?? collect())->count())
+                @foreach($exports as $e)
+                  @php
+                    [$bgS, $fgS] = stateColors($e->processed_state);
+                    [$bgR, $fgR, $labR] = resultColors($e->response_ok, $e->response_status);
+                    $msg = $e->response_text ?? '';
+                    $nombre = $e->issuer_full_name ?: Str::before($e->issuer_employee_internal_id, '@');
+                  @endphp
+                  <tr>
+                    <td>{{ $e->request_id }}</td>
+                    <td>
+                      {{ $e->usuario_id ?: Str::before($e->issuer_employee_internal_id, '@') }}
+                      <small class="text-muted d-block">{{ $e->issuer_employee_internal_id }}</small>
+                    </td>
+                    <td>{{ $nombre }}</td>
+                    <td>{{ $e->codigo_col }}</td>
+                    <td>{{ $e->policy_name }}</td>
+                    <td>{{ optional($e->from_date)->format('Y-m-d') }}</td>
+                    <td>{{ optional($e->to_date)->format('Y-m-d') }}</td>
+                    <td>{{ $e->dias }}</td>
+                    <td>
+                      <span class="badge" style="background-color: {{ $bgS }}; color: {{ $fgS }}; border-radius:12px; padding:6px 10px; font-weight:600;">
+                        {{ strtoupper($e->processed_state) }}
+                      </span>
+                    </td>
+                    <td>
+                      <span class="badge" style="background-color: {{ $bgR }}; color: {{ $fgR }}; border-radius:12px; padding:6px 10px; font-weight:600;">
+                        {{ $labR }}
+                      </span>
+                    </td>
+                    <td>{{ optional($e->created_at)->format('Y-m-d H:i') }}</td>
+                    <td>
+                      <button type="button"
+                        class="btn btn-link btn-info btn-just-icon view-msg"
+                        title="Ver mensaje"
+                        data-message="{{ e($msg) }}">
+                        <i class="material-icons">message</i>
+                      </button>
+                    </td>
+                    <td>{{ $e->request_url }}</td> {{-- oculta por DataTables --}}
+                  </tr>
+                @endforeach
+              @endif
+              {{-- Importante: NO poner fila con colspan cuando no hay datos --}}
             </tbody>
           </table>
         </div>
@@ -216,7 +213,7 @@
         pagingType: "full_numbers",
         lengthMenu: [[10, 25, 50, -1],[10, 25, 50, "Todos"]],
         responsive: true,
-        order: [[9, 'desc']], // "Creado" es la columna 9 ahora
+        order: [[10, 'desc']], // "Creado" ahora es la columna 10
         language: {
           search: "_INPUT_",
           searchPlaceholder: "Buscar en toda la tabla…",
@@ -225,16 +222,20 @@
           info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
           infoEmpty: "Mostrando 0 a 0 de 0 registros",
           infoFiltered: "(filtrado de _MAX_ registros totales)",
+          emptyTable: "Aún no hay registros.", // evita fila con colspan
           paginate: { first: "Primero", last: "Último", next: "Siguiente", previous: "Anterior" }
         },
         columnDefs: [
           // Badges: usar texto para ordenar/filtrar
-          { targets: [7,8], render: function(data, type) {
+          { targets: [8,9], render: function(data, type) {
               if (type === 'sort' || type === 'filter') return String(data).replace(/<[^>]*>/g,'').trim();
               return data;
             }
           },
-          { targets: [10,11], orderable: false } // Mensaje, URL
+          // Ocultar URL (col 12) pero mantenerla en el DOM
+          { targets: 12, visible: false, searchable: false },
+          // Mensaje no ordenable
+          { targets: 11, orderable: false }
         ]
       });
 
@@ -244,11 +245,13 @@
         const stateFilter  = ($('#filter-estado').val()   || '').toUpperCase();
         const policyFilter = ($('#filter-politica').val() || '');
 
-        const usuarioCell  = (data[1] || '').toLowerCase(); // Usuario + correo (mismo td)
-        const policyCell   = (data[3] || '');
-        const procState    = (data[7] || '').replace(/<[^>]*>/g,'').toUpperCase().trim();
+        const usuarioCell  = (data[1] || '').toLowerCase(); // usuario + correo
+        const nombreCell   = (data[2] || '').toLowerCase(); // nombre
+        const policyCell   = (data[4] || '');
+        const procState    = (data[8] || '').replace(/<[^>]*>/g,'').toUpperCase().trim();
 
-        if (userFilter && !usuarioCell.includes(userFilter)) return false;
+        // Usuario/Correo/Nombre
+        if (userFilter && !(usuarioCell.includes(userFilter) || nombreCell.includes(userFilter))) return false;
         if (stateFilter && procState !== stateFilter) return false;
         if (policyFilter && policyCell !== policyFilter) return false;
         return true;
@@ -264,14 +267,52 @@
         dt.search('').columns().search(''); dt.draw();
       });
 
+      // --- Util: decodificar entidades HTML (&quot; -> ")
+      function htmlDecode(str) {
+        const txt = document.createElement('textarea');
+        txt.innerHTML = (str || '');
+        return txt.value;
+      }
+
+      // --- Pretty print del mensaje
+      function formatMessage(raw) {
+        const decoded = htmlDecode(raw).trim();
+
+        // Caso 1: "ACCION=INS | {...json...}"
+        const m = decoded.match(/^\s*ACCION\s*=\s*([A-Z]+)\s*\|\s*(\{[\s\S]*\})\s*$/i);
+        if (m) {
+          const accion = m[1].toUpperCase();
+          const jsonStr = m[2];
+          try {
+            const obj = JSON.parse(jsonStr);
+            const estatus = (obj.ESTATUS || '').toString().toUpperCase();
+            const mensajes = Array.isArray(obj.MENSAJES) ? obj.MENSAJES : [];
+            let out = `ACCION: ${accion}\nESTATUS: ${estatus}\n`;
+            if (mensajes.length) {
+              out += `MENSAJES:\n - ` + mensajes.join('\n - ');
+            }
+            return out;
+          } catch (e) {
+            // Si falla el parseo, devolvemos decodificado tal cual
+            return decoded;
+          }
+        }
+
+        // Caso 2: JSON puro
+        try {
+          const obj = JSON.parse(decoded);
+          return JSON.stringify(obj, null, 2);
+        } catch (e) {
+          // No es JSON => retornar texto decodificado
+          return decoded;
+        }
+      }
+
       // --- Modal Mensaje ---
       $(document).on('click', '.view-msg', function() {
-        let msg = $(this).data('message') || '';
-        try {
-          const parsed = JSON.parse(msg);
-          msg = JSON.stringify(parsed, null, 2);
-        } catch (e) {}
-        $('#modalMsgBody').text(msg);
+        const raw = $(this).data('message') || '';
+        const formatted = formatMessage(raw);
+        $('#modalMsgBody').text(formatted);
         $('#msgModal').modal('show');
       });
 
@@ -290,7 +331,7 @@
         .done(function(resp){
           const msg = (resp && resp.message) ? resp.message : 'Exportación a SAP ejecutada.';
           $('#flash').html('<div class="alert alert-success">'+ msg +'</div>');
-          location.reload(); // recarga para ver nuevos registros
+          location.reload(); // datos frescos
         })
         .fail(function(xhr){
           let msg = 'Exportación a SAP falló.';
