@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os, sys, json, requests
+import os, sys, json, re, requests
 from datetime import datetime, date
 from requests.auth import HTTPBasicAuth
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 import pyodbc
 
@@ -26,14 +28,28 @@ SAP_CLIENT     = os.getenv('SAP_CLIENT', '110')
 SAP_USER       = os.getenv('SAP_USER')       # opcional
 SAP_PASS       = os.getenv('SAP_PASS')       # opcional
 SAP_VERIFY_SSL = os.getenv('SAP_VERIFY_SSL', 'false')  # false si cert interno
-CONNECT_TIMEOUT = int(os.getenv('SAP_CONNECT_TIMEOUT', '8'))
-READ_TIMEOUT    = int(os.getenv('SAP_READ_TIMEOUT', '20'))
+CONNECT_TIMEOUT = int((os.getenv('SAP_CONNECT_TIMEOUT') or '8').strip())
+READ_TIMEOUT    = int((os.getenv('SAP_READ_TIMEOUT') or os.getenv('SAP_READ__TIMEOUT') or '20').strip())
 SAP_KEY         = os.getenv('SAP_KEY')  # si tu endpoint exige este param en query
 
 # Enviar parámetros como: query (default) o form
 SAP_PARAM_MODE = (os.getenv('SAP_PARAM_MODE') or 'query').strip().lower()  # 'query' | 'form'
 
-# --- comportamiento ---
+# --- HUMAND (.env) ---
+# Ejemplo:
+# HUMAND_API_BASE="https://api-prod.humand.co/public/api/v1"
+# HUMAND_API_AUTH="Basic abcDEF..."
+HUMAND_API_BASE    = (os.getenv('HUMAND_API_BASE') or 'https://api-prod.humand.co/public/api/v1').rstrip('/')
+HUMAND_API_AUTH    = os.getenv('HUMAND_API_AUTH')  # "Basic ...", obligatorio
+# Activar/desactivar cancelación automática en Humand ante el mensaje específico de SAP
+HUMAND_AUTO_CANCEL = (os.getenv('HUMAND_AUTO_CANCEL', 'true').strip().lower() in ('1','true','yes','y','on'))
+# Mensaje por defecto para resolutionReason
+HUMAND_DEFAULT_CANCEL_REASON = (
+    os.getenv('HUMAND_CANCEL_REASON') or
+    "SE CANCELA POR QUE EL RANGO DE FECHAS NO ES UN DIA LABORABLE PARA EL USUARIO"
+)
+
+# --- comportamiento general ---
 # estados a considerar que vienen de Humand
 PROCESS_STATES = [s.strip().upper() for s in os.getenv('PROCESS_STATES', 'APPROVED,CANCELLED').split(',') if s.strip()]
 # hace limpieza inicial de duplicados (una fila por request_id)
@@ -43,10 +59,18 @@ DO_DEDUP = (os.getenv('SAP_EXPORT_DEDUP','true').strip().lower() in ('1','true',
 POLICY_CLAVE_MAP = {'VACACIONES': '6072', 'LEGO': '6073'}
 
 # ---- Sesión HTTP ----
-SESSION = requests.Session()
-SESSION.trust_env = False
-SESSION.headers.update({'Accept': 'application/json'})
+def build_session():
+    s = requests.Session()
+    s.trust_env = False
+    s.headers.update({'Accept': 'application/json'})
+    # Retries conservadores para errores transitorios
+    retry = Retry(total=3, backoff_factor=0.6, status_forcelist=(429, 500, 502, 503, 504), allowed_methods=frozenset(['GET','POST','PUT']))
+    adapter = HTTPAdapter(max_retries=retry)
+    s.mount('http://', adapter)
+    s.mount('https://', adapter)
+    return s
 
+SESSION = build_session()
 INFOTIPO = '2001'
 
 # ---------- util ----------
@@ -74,14 +98,18 @@ def connect_sqlserver():
         f"TrustServerCertificate={'yes' if tsc else 'no'}",
     ]
     if encrypt is not None: parts.append(f"Encrypt={'yes' if encrypt else 'no'}")
-    return pyodbc.connect(';'.join(parts)+';', timeout=15)
+    # timeouts opcionales
+    login_timeout = int(os.getenv('DB_LOGIN_TIMEOUT', '5'))
+    pyodbc.pooling = True
+    conn = pyodbc.connect(';'.join(parts)+';', timeout=login_timeout)
+    return conn
 
 # --- queries ---
 SQL_BASE = f"""
 SELECT
   r.request_id,
   r.issuer_employee_internal_id,
-  r.issuer_full_name,              -- <<< NUEVO
+  r.issuer_full_name,
   r.policy_name,
   r.from_date,
   r.to_date,
@@ -100,7 +128,6 @@ LEFT JOIN Organigrama.dbo.Organigrama o
 WHERE UPPER(r.state) IN ({', '.join(['?' for _ in PROCESS_STATES])})
 """
 
-# última fila (si existiera) por request_id
 SQL_GET_LAST = """
 SELECT TOP 1 id, processed_state, response_ok, response_status, response_text,
        policy_name, clave, infotipo, from_date, to_date, dias, request_url
@@ -109,14 +136,12 @@ WHERE request_id = ?
 ORDER BY id DESC
 """
 
-# hubo un APPROVED OK (para permitir DEL)
 SQL_HAS_APPROVED_OK = """
 SELECT TOP 1 1
 FROM dbo.sap_time_off_exports
 WHERE request_id = ? AND UPPER(processed_state)='APPROVED' AND response_ok=1
 """
 
-# dedupe inicial (quedarse con la última por request_id)
 SQL_DEDUP = """
 ;WITH d AS (
   SELECT id, ROW_NUMBER() OVER(PARTITION BY request_id ORDER BY id DESC) rn
@@ -125,14 +150,13 @@ SQL_DEDUP = """
 DELETE FROM dbo.sap_time_off_exports WHERE id IN (SELECT id FROM d WHERE rn > 1);
 """
 
-# upsert (una fila por request_id)
 SQL_UPSERT = """
 MERGE dbo.sap_time_off_exports AS T
 USING (SELECT
     ? AS request_id,
     ? AS processed_state,
     ? AS issuer_employee_internal_id,
-    ? AS issuer_full_name,              -- <<< NUEVO
+    ? AS issuer_full_name,
     ? AS usuario_id,
     ? AS codigo_col,
     ? AS policy_name,
@@ -152,7 +176,7 @@ WHEN MATCHED THEN
   UPDATE SET
     processed_state = S.processed_state,
     issuer_employee_internal_id = S.issuer_employee_internal_id,
-    issuer_full_name            = S.issuer_full_name,       -- <<< NUEVO
+    issuer_full_name            = S.issuer_full_name,
     usuario_id  = S.usuario_id,
     codigo_col  = S.codigo_col,
     policy_name = S.policy_name,
@@ -212,6 +236,30 @@ def build_log_url(accion, codigo_col, from_date, to_date, clave, dias):
         params.insert(0, f"Key={SAP_KEY}")
     return f"{SAP_BASE_URL}?{'&'.join(params)}"
 
+# --- patrones de error SAP que disparan cancelación en Humand ---
+# Normalizamos removiendo acentos y trabajando en minúsculas.
+# Ejemplo entrante:
+# "Día fin 11.10.2025 de presencia/absentismo es libre de tbjo. (cl.pres./abs. 6072)"
+RE_SAP_LIBRE_TRABAJO = re.compile(
+    r'presencia/absentismo\s+es\s+libre\s+de\s+tbjo.*\(cl\.pres\./abs\.\s*6072\)',
+    re.IGNORECASE
+)
+
+def normalize_text(s: str) -> str:
+    # Remueve acentos simples por robustez (sin dependencias externas)
+    repl = (
+        ('á','a'),('é','e'),('í','i'),('ó','o'),('ú','u'),
+        ('Á','A'),('É','E'),('Í','I'),('Ó','O'),('Ú','U'),
+        ('ñ','n'),('Ñ','N')
+    )
+    for a,b in repl: s = s.replace(a,b)
+    return s
+
+def message_indicates_free_workday(msg: str) -> bool:
+    if not msg: return False
+    s = normalize_text(msg)
+    return bool(RE_SAP_LIBRE_TRABAJO.search(s))
+
 # --- llamada SAP (params en query o form) ---
 def call_sap(payload):
     """
@@ -241,15 +289,43 @@ def call_sap(payload):
         status = r.status_code
         text   = r.text.strip()
         ok = False
+        data = None
         try:
             data = r.json()
             ok = (str(data.get('ESTATUS','')).upper() == 'OK')
             text = json.dumps(data, ensure_ascii=False)
         except Exception:
             ok = (200 <= status < 300)
-        return (status, ok, text)
+        return (status, ok, text, data)
     except Exception as ex:
-        return (None, False, f"ERROR_REQUEST: {ex}")
+        return (None, False, f"ERROR_REQUEST: {ex}", None)
+
+# --- HUMAND: cancelar request ---
+def humand_cancel_request(request_id: int, reason: str) -> tuple[int, bool, str]:
+    """
+    PUT https://.../time-off/requests/{request_id}/state
+    Body: {"state":"CANCELLED","resolutionReason":"..."}
+    """
+    if not HUMAND_API_AUTH:
+        return (0, False, "HUMAND_API_AUTH no configurado")
+
+    url = f"{HUMAND_API_BASE}/time-off/requests/{request_id}/state"
+    headers = {
+        'accept': '*/*',
+        'Authorization': HUMAND_API_AUTH,
+        'Content-Type': 'application/json',
+    }
+    body = {
+        "state": "CANCELLED",
+        "resolutionReason": reason or HUMAND_DEFAULT_CANCEL_REASON
+    }
+    try:
+        rsp = SESSION.put(url, headers=headers, json=body, timeout=(8, 20))
+        ok = (200 <= rsp.status_code < 300)
+        txt = rsp.text.strip()
+        return (rsp.status_code, ok, txt)
+    except Exception as ex:
+        return (0, False, f"ERROR_HUMAND_REQUEST: {ex}")
 
 def upsert(cur, *, request_id, processed_state, email, issuer_full_name, usuario_id, codigo_col,
            policy_name, clave, infotipo, from_date, to_date, dias,
@@ -364,13 +440,57 @@ def process():
                     'accion'       : accion,
                 }
                 print(f" - req {request_id}: {accion} -> POST ({SAP_PARAM_MODE})", flush=True)
-                status, ok, text = call_sap(payload)
-                msg = f"ACCION={accion} | {text}"
+                status, ok, text, data = call_sap(payload)
+
+                # --- Analizar respuesta SAP para detectar el caso "presencia/absentismo es libre de tbjo..."
+                humand_note = ""
+                if not ok and accion == 'INS' and HUMAND_AUTO_CANCEL:
+                    # Intentar extraer MENSAJES desde JSON si es que venía JSON
+                    mensajes = []
+                    try:
+                        if isinstance(data, dict) and isinstance(data.get('MENSAJES'), list):
+                            mensajes = [str(m) for m in data['MENSAJES']]
+                    except Exception:
+                        pass
+                    # si no hay data JSON, intentar con texto plano
+                    if not mensajes and text:
+                        try:
+                            j = json.loads(text)
+                            if isinstance(j, dict) and isinstance(j.get('MENSAJES'), list):
+                                mensajes = [str(m) for m in j['MENSAJES']]
+                        except Exception:
+                            # texto plano; lo tratamos como un único mensaje
+                            mensajes = [text]
+
+                    # ¿Algún mensaje coincide?
+                    found_trigger = any(message_indicates_free_workday(m) for m in mensajes)
+
+                    if found_trigger:
+                        # Mensaje a registrar y razón para Humand
+                        # Extrae y conserva, p.ej.: "presencia/absentismo es libre de tbjo. (cl.pres./abs. 6072)"
+                        detalle = None
+                        for m in mensajes:
+                            if message_indicates_free_workday(m):
+                                detalle = m
+                                break
+                        # Llamar a Humand para CANCELAR
+                        reason = HUMAND_DEFAULT_CANCEL_REASON
+                        print(f"   * Detalle SAP detectado: {detalle}", flush=True)
+                        print(f"   * Llamando Humand CANCEL para request_id={request_id}", flush=True)
+                        h_status, h_ok, h_txt = humand_cancel_request(request_id, reason)
+                        humand_note = f" | HUMAND_CANCEL status={h_status} ok={h_ok} resp={h_txt[:500]}"
+
+                        # Si Humand canceló OK, conviene reflejar estado CANCELLED en nuestra tabla,
+                        # pero sin romper tu lógica original registramos la respuesta como parte del texto.
+                        # (No cambiamos processed_state aquí; seguimos registrando el resultado de la acción SAP.)
+                msg = f"ACCION={accion} | {text}{humand_note}"
+
                 upsert(cur,
                     request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
                     codigo_col=codigo_col, policy_name=policy, clave=str(clave), infotipo=INFOTIPO,
                     from_date=from_date, to_date=to_date, dias=dias,
                     request_url=req_url, response_status=status, response_ok=ok, response_text=msg)
+
             else:
                 status = last.response_status if last else None
                 okflag = (int(last.response_ok or 0) == 1) if last else False
