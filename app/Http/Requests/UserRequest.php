@@ -9,48 +9,36 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UserRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     *
-     * @return bool
-     */
     public function authorize()
     {
         return auth()->check();
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array
-     */
     public function rules()
     {
+        $assignable = config('users.assignable_role_ids', [1, 4, 5]);
+        $roleId = (int) $this->input('role_id');
+        $needsPassword = $roleId === 1 && !$this->route('user');
+
         return [
-            'name' => [
-                'required', 'min:3'
-            ],
+            'name' => ['required', 'min:2', 'max:120'],
             'email' => [
-                'required', 'email', Rule::unique((new User)->getTable())->ignore($this->route()->user->id ?? null)
+                'required', 'email',
+                Rule::unique((new User)->getTable())->ignore($this->route('user')?->id),
             ],
-            'role_id' => [
-                'required', 'exists:'.(new Role)->getTable().',id'
-            ],
+            'role_id' => ['required', Rule::in($assignable)],
             'password' => [
-                $this->route()->user ? 'nullable' : 'required', 'confirmed', 'min:6'
-            ]
+                $needsPassword ? 'required' : 'nullable',
+                'confirmed', 'min:6',
+            ],
         ];
     }
 
-    /**
-     * Get the validation attributes that apply to the request.
-     *
-     * @return array
-     */
     public function attributes()
     {
         return [
-            'role_id' => 'role',
+            'role_id'  => 'rol',
+            'name'     => 'usuario',
         ];
     }
 }

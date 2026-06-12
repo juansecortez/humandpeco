@@ -79,7 +79,7 @@
     <div class="sidebar-wrapper">
         <div class="user">
             <div class="photo">
-                <img src="{{ auth()->user()->profilePicture() }}" />
+                <img src="{{ auth()->user()->profilePicture() }}" style="border-radius:8px;object-fit:cover;" onerror="this.src='{{ asset(config('users.default_avatar')) }}'" />
             </div>
             <div class="user-info">
                 <a data-toggle="collapse" href="#collapseExample" class="username">
@@ -157,31 +157,73 @@
             </li>
 
 
-            <li class="nav-item {{ $menuParent == 'vacaciones' ? 'active' : '' }}">
-                <a class="nav-link" data-toggle="collapse" href="#VacaExamples"
-                    {{ $menuParent == 'Vacaciones' ? 'aria-expanded="true"' : '' }}>
-                    <i class="material-icons">flight</i>
-                    <p> {{ __('Vacaciones') }}
+            <li class="nav-item {{ ($menuParent ?? '') == 'solicitudes-fc' ? 'active' : '' }}">
+                <a class="nav-link" data-toggle="collapse" href="#SolicitudesFcMenu"
+                    {{ ($menuParent ?? '') == 'solicitudes-fc' ? 'aria-expanded="true"' : '' }}>
+                    <i class="material-icons">assignment</i>
+                    <p> {{ __('Solicitudes FC') }}
                         <b class="caret"></b>
                     </p>
                 </a>
-                <div class="collapse{{ $menuParent == 'vacas' ? ' show' : '' }}" id="VacaExamples">
+                <div class="collapse{{ ($menuParent ?? '') == 'solicitudes-fc' ? ' show' : '' }}" id="SolicitudesFcMenu">
                     <ul class="nav">
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ route('vacaciones.admin') }}">
-                                <span class="sidebar-mini"> AV </span>
-                                <span class="sidebar-normal"> {{ __('Administrar Vacaciones') }} </span>
+                        @foreach(config('time_off_policies.fc', []) as $slug => $policy)
+                        <li class="nav-item{{ ($activePage ?? '') == ($policy['active_page'] ?? '') ? ' active' : '' }}">
+                            <a class="nav-link" href="{{ route('solicitudes.admin', ['group' => 'fc', 'policy' => $slug]) }}">
+                                <span class="sidebar-mini">{{ strtoupper(substr($policy['label'], 0, 2)) }}</span>
+                                <span class="sidebar-normal"> {{ __($policy['label']) }} </span>
                             </a>
                         </li>
-                        <li class="nav-item">
+                        @endforeach
+                        <li class="nav-item{{ ($activePage ?? '') == 'solicitudes-fc-status' ? ' active' : '' }}">
                             <a class="nav-link" href="{{ route('vacaciones.status') }}">
-                                <span class="sidebar-mini"> EV </span>
-                                <span class="sidebar-normal"> {{ __('Estatus de Vacaciones') }} </span>
+                                <span class="sidebar-mini"> ES </span>
+                                <span class="sidebar-normal"> {{ __('Estatus SAP') }} </span>
                             </a>
                         </li>
-
                     </ul>
                 </div>
+            </li>
+
+            <li class="nav-item {{ ($menuParent ?? '') == 'solicitudes-dc' ? 'active' : '' }}">
+                <a class="nav-link" data-toggle="collapse" href="#SolicitudesDcMenu"
+                    {{ ($menuParent ?? '') == 'solicitudes-dc' ? 'aria-expanded="true"' : '' }}>
+                    <i class="material-icons">assignment_ind</i>
+                    <p> {{ __('Solicitudes DC') }}
+                        <b class="caret"></b>
+                    </p>
+                </a>
+                <div class="collapse{{ ($menuParent ?? '') == 'solicitudes-dc' ? ' show' : '' }}" id="SolicitudesDcMenu">
+                    <ul class="nav">
+                        @foreach(config('time_off_policies.dc', []) as $slug => $policy)
+                        <li class="nav-item{{ ($activePage ?? '') == ($policy['active_page'] ?? '') ? ' active' : '' }}">
+                            <a class="nav-link" href="{{ route('solicitudes.admin', ['group' => 'dc', 'policy' => $slug]) }}">
+                                <span class="sidebar-mini">{{ strtoupper(substr($policy['label'], 0, 2)) }}</span>
+                                <span class="sidebar-normal"> {{ __($policy['label']) }} </span>
+                            </a>
+                        </li>
+                        @endforeach
+                        <li class="nav-item{{ ($activePage ?? '') == 'solicitudes-dc-vacaciones-status' ? ' active' : '' }}">
+                            <a class="nav-link" href="{{ route('vacaciones.dcVacacionesStatus') }}">
+                                <span class="sidebar-mini">EV</span>
+                                <span class="sidebar-normal"> {{ __('Estatus Vacaciones DC') }} </span>
+                            </a>
+                        </li>
+                        <li class="nav-item{{ ($activePage ?? '') == 'solicitudes-dc-anticipos-status' ? ' active' : '' }}">
+                            <a class="nav-link" href="{{ route('vacaciones.dcAnticiposStatus') }}">
+                                <span class="sidebar-mini">EA</span>
+                                <span class="sidebar-normal"> {{ __('Estatus Anticipos DC') }} </span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="nav-item {{ ($menuParent ?? '') == 'saldos' ? 'active' : '' }}">
+                <a class="nav-link" href="{{ route('saldos.index') }}">
+                    <i class="material-icons">account_balance_wallet</i>
+                    <p> {{ __('Saldos de vacaciones') }} </p>
+                </a>
             </li>
 
             <!-- (sidebar cerrado)

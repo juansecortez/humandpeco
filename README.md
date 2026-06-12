@@ -8,6 +8,8 @@
 
 Speed up your web development with the Bootstrap 4 Admin Dashboard built for Laravel Framework 9.x and up.
 
+> **HumandPeco:** documentación del proyecto (instalación, arquitectura Humand→SAP, operación) en [`docs/README.md`](docs/README.md).
+
 ## Prerequisites
 
 If you don't already have an Apache local environment with PHP and MySQL, use one of the following links:

@@ -1,131 +1,105 @@
-@extends('layouts.app', ['activePage' => 'user-management', 'menuParent' => 'laravel', 'titlePage' => __('User Management')])
+@extends('layouts.app', ['activePage' => 'user-management', 'menuParent' => 'laravel', 'titlePage' => 'Usuarios'])
 
 @section('content')
-  <div class="content">
-    <div class="container-fluid">
-      <div class="row">
-        <div class="col-md-12">
-            <div class="card">
-              <div class="card-header card-header-rose card-header-icon">
-                <div class="card-icon">
-                  <i class="material-icons">group</i>
-                </div>
-                <h4 class="card-title">{{ __('Users') }}</h4>
+<div class="content">
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-header card-header-rose card-header-icon">
+            <div class="card-icon"><i class="material-icons">group</i></div>
+            <h4 class="card-title">Usuarios</h4>
+            <p class="card-category">Asignación de roles de acceso a HumandPeco</p>
+          </div>
+          <div class="card-body">
+            @if (session('status'))
+              <div class="alert alert-success">{{ session('status') }}</div>
+            @endif
+            @can('create', App\User::class)
+              <div class="text-right mb-3">
+                <a href="{{ route('user.create') }}" class="btn btn-rose btn-sm">
+                  <i class="material-icons" style="font-size:18px;vertical-align:middle;">person_add</i> Agregar usuario
+                </a>
               </div>
-              <div class="card-body">
-                @can('create', App\User::class)
-                  <div class="row">
-                    <div class="col-12 text-right">
-                      <a href="{{ route('user.create') }}" class="btn btn-sm btn-rose">{{ __('Add user') }}</a>
-                    </div>
-                  </div>
-                @endcan
-                <div class="table-responsive m-0 w-100" id="users-table" style="overflow: hidden;">
-                  <table id="datatables" class="table table-striped table-no-bordered table-hover" style="display:none">
-                    <thead class="text-primary">
-                      <th class="desktop">
-                          {{ __('Photo') }}
-                      </th>
-                      <th class="desktop">
-                          {{ __('Name') }}
-                      </th>
-                      <th class="desktop">
-                        {{ __('Email') }}
-                      </th>
-                      <th class="desktop">
-                        {{ __('Role') }}
-                      </th>
-                      <th class="desktop">
-                        {{ __('Creation date') }}
-                      </th>
+            @endcan
+            <div class="table-responsive">
+              <table id="datatables" class="table table-striped table-hover">
+                <thead class="text-primary">
+                  <tr>
+                    <th>Usuario</th>
+                    <th>Correo</th>
+                    <th>Rol</th>
+                    <th>Alta</th>
+                    @can('manage-users', App\User::class)
+                      <th class="text-right">Acciones</th>
+                    @endcan
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach($users as $user)
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="{{ $user->profilePicture() }}" alt=""
+                            style="width:40px;height:40px;object-fit:cover;border-radius:8px;margin-right:10px;">
+                          <strong>{{ $user->name }}</strong>
+                        </div>
+                      </td>
+                      <td>{{ $user->email }}</td>
+                      <td><span class="badge badge-info">{{ $user->role->name ?? '—' }}</span></td>
+                      <td><small>{{ $user->created_at->format('d/m/Y') }}</small></td>
                       @can('manage-users', App\User::class)
-                        <th class="text-right desktop">
-                          {{ __('Actions') }}
-                        </th>
+                        <td class="td-actions text-right">
+                          @if ($user->id != auth()->id())
+                            @can('update', $user)
+                              <a class="btn btn-success btn-link btn-just-icon" href="{{ route('user.edit', $user) }}" title="Editar">
+                                <i class="material-icons">edit</i>
+                              </a>
+                            @endcan
+                            @can('delete', $user)
+                              <form action="{{ route('user.destroy', $user) }}" method="post" class="d-inline">
+                                @csrf
+                                @method('delete')
+                                <button type="submit" class="btn btn-danger btn-link btn-just-icon"
+                                  onclick="return confirm('¿Eliminar este usuario?')" title="Eliminar">
+                                  <i class="material-icons">close</i>
+                                </button>
+                              </form>
+                            @endcan
+                          @else
+                            <a class="btn btn-info btn-link btn-just-icon" href="{{ route('profile.edit') }}" title="Mi perfil">
+                              <i class="material-icons">person</i>
+                            </a>
+                          @endif
+                        </td>
                       @endcan
-                    </thead>
-                    <tbody>
-                      @foreach($users as $user)
-                        <tr>
-                          <td>
-                            <div class="avatar avatar-sm rounded-circle img-circle" style="width:100px; height:100px;overflow: hidden;">
-                                <img src="{{ $user->profilePicture() }}" alt="" style="max-width: 100px;">
-                            </div>
-                          </td>
-                          <td>
-                            {{ $user->name }}
-                          </td>
-                          <td>
-                            {{ $user->email }}
-                          </td>
-                          <td>
-                            {{ $user->role->name }}
-                          </td>
-                          <td>
-                            {{ $user->created_at->format('Y-m-d') }}
-                          </td>
-                          @can('manage-users', App\User::class)
-                            <td class="td-actions text-right">
-                                @if ($user->id != auth()->id())
-                                  <form action="{{ route('user.destroy', $user) }}" method="post">
-                                      @csrf
-                                      @method('delete')
-
-                                      @can('update', $user)
-                                        <a rel="tooltip" class="btn btn-success btn-link" href="{{ route('user.edit', $user) }}" data-original-title="" title="">
-                                          <i class="material-icons">edit</i>
-                                          <div class="ripple-container"></div>
-                                        </a>
-                                      @endcan
-                                      @can('delete', $user)
-                                        <button type="button" class="btn btn-danger btn-link" data-original-title="" title="" onclick="confirm('{{ __("Are you sure you want to delete this user?") }}') ? this.parentElement.submit() : ''">
-                                            <i class="material-icons">close</i>
-                                            <div class="ripple-container"></div>
-                                        </button>
-                                      @endcan
-                                  </form>
-                              @else
-                                @can('update', $user)
-                                  <a rel="tooltip" class="btn btn-success btn-link" href="{{ route('profile.edit') }}" data-original-title="" title="">
-                                    <i class="material-icons">edit</i>
-                                    <div class="ripple-container"></div>
-                                  </a>
-                                @endcan
-                              @endif
-                            </td>
-                          @endcan
-                        </tr>
-                      @endforeach
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                    </tr>
+                  @endforeach
+                </tbody>
+              </table>
             </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
+</div>
 @endsection
 
 @push('js')
-  <script>
-    $(document).ready(function() {
-      $('#datatables').fadeIn(1100);
-      $('#datatables').DataTable({
-        "pagingType": "full_numbers",
-        "lengthMenu": [
-          [10, 25, 50, -1],
-          [10, 25, 50, "All"]
-        ],
-        responsive: true,
-        language: {
-          search: "_INPUT_",
-          searchPlaceholder: "Search users",
-        },
-        "columnDefs": [
-          { "orderable": false, "targets": 5 },
-        ],
-      });
+<script>
+  $(function () {
+    $('#datatables').DataTable({
+      pagingType: 'full_numbers',
+      lengthMenu: [[10, 25, 50, -1], [10, 25, 50, 'Todos']],
+      responsive: true,
+      language: {
+        search: '_INPUT_', searchPlaceholder: 'Buscar…',
+        lengthMenu: 'Mostrar _MENU_', info: '_START_–_END_ de _TOTAL_',
+        zeroRecords: 'Sin usuarios', paginate: { first: '«', last: '»', next: '›', previous: '‹' }
+      },
+      columnDefs: [{ orderable: false, targets: -1 }]
     });
-  </script>
+  });
+</script>
 @endpush

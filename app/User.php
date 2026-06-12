@@ -52,10 +52,14 @@ class User extends Authenticatable
     public function profilePicture()
     {
         if ($this->picture) {
+            if (str_starts_with($this->picture, 'material/') || str_starts_with($this->picture, 'http')) {
+                return str_starts_with($this->picture, 'http') ? $this->picture : asset($this->picture);
+            }
+
             return "/storage/{$this->picture}";
         }
 
-        return 'http://i.pravatar.cc/200';
+        return asset(config('users.default_avatar', 'material/img/default-avatar.png'));
     }
 
     /**

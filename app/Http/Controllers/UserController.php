@@ -6,6 +6,7 @@ use App\Role;
 use App\User;
 use App\Http\Requests\UserRequest;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class UserController extends Controller
 {
@@ -35,8 +36,10 @@ class UserController extends Controller
      */
 public function create()
 {
-    // Trae los roles con orden estable
-    $roles = \App\Role::orderBy('id')->get(['id','name']);
+    $roles = Role::whereIn('id', config('users.assignable_role_ids', [1, 4, 5]))
+        ->orderBy('id')
+        ->get(['id', 'name']);
+
     return view('users.create', compact('roles'));
 }
 
@@ -49,19 +52,18 @@ public function create()
      */
 public function store(UserRequest $request, User $model)
 {
-    $data = $request->only(['name','email','role_id']); // <- incluye role_id
+    $data = $request->only(['name', 'email', 'role_id']);
+    $data['picture'] = config('users.default_avatar', 'material/img/default-avatar.png');
 
     if ($request->filled('password')) {
         $data['password'] = Hash::make($request->input('password'));
-    }
-
-    if ($request->hasFile('photo')) {
-        $data['picture'] = $request->file('photo')->store('profile', 'public');
+    } else {
+        $data['password'] = Hash::make(Str::random(32));
     }
 
     $model->create($data);
 
-    return redirect()->route('user.index')->withStatus(__('User successfully created.'));
+    return redirect()->route('user.index')->with('status', 'Usuario creado correctamente.');
 }
 
     /**
@@ -75,7 +77,9 @@ public function store(UserRequest $request, User $model)
     {
         return view('users.edit', [
             'user'  => $user->load('role'),
-            'roles' => Role::all(['id','name']),
+            'roles' => Role::whereIn('id', config('users.assignable_role_ids', [1, 4, 5]))
+                ->orderBy('id')
+                ->get(['id', 'name']),
         ]);
     }
 
@@ -89,13 +93,8 @@ public function store(UserRequest $request, User $model)
      */
     public function update(UserRequest $request, User $user)
     {
-        $data = $request->only(['name', 'email', 'role_id']); // <- incluye role_id
-
-        if ($request->hasFile('photo')) {
-            $data['picture'] = $request->file('photo')->store('profile', 'public');
-        } else {
-            $data['picture'] = $user->picture;
-        }
+        $data = $request->only(['name', 'email', 'role_id']);
+        $data['picture'] = $user->picture ?: config('users.default_avatar', 'material/img/default-avatar.png');
 
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->input('password'));
@@ -103,9 +102,7 @@ public function store(UserRequest $request, User $model)
 
         $user->update($data);
 
-        return redirect()
-            ->route('user.index')
-            ->withStatus(__('User successfully updated.'));
+        return redirect()->route('user.index')->with('status', 'Usuario actualizado correctamente.');
     }
 
 
@@ -119,6 +116,6 @@ public function store(UserRequest $request, User $model)
     {
         $user->delete();
 
-        return redirect()->route('user.index')->withStatus(__('User successfully deleted.'));
+        return redirect()->route('user.index')->with('status', 'Usuario eliminado correctamente.');
     }
 }

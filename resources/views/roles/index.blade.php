@@ -10,7 +10,8 @@
                 <div class="card-icon">
                   <i class="material-icons">recent_actors</i>
                 </div>
-                <h4 class="card-title">{{ __('Roles') }}</h4>
+                <h4 class="card-title">Roles</h4>
+                <p class="card-category">Solo roles activos en HumandPeco (Admin, Vacaciones, Nóminas)</p>
               </div>
               <div class="card-body">
                 @can('create', App\Role::class)

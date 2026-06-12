@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\VacacionesController;
+use App\Http\Controllers\SaldosController;
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -123,13 +124,47 @@ Route::group(['middleware' => 'auth:web,organigrama'], function () {
     Route::get('fullscreen-maps', ['as' => 'page.fullscreen_maps', 'uses' => 'MapPagesController@fullscreenMaps']);
     Route::get('vector-maps', ['as' => 'page.vector_maps', 'uses' => 'MapPagesController@vectorMaps']);
 
-    Route::get('/vacaciones/administracion', [VacacionesController::class, 'admin'])
-        ->name('vacaciones.admin');
-Route::post('/vacaciones/admin/run-etl', [VacacionesController::class, 'runEtl'])
-    ->name('vacaciones.runEtl');
+    Route::redirect('/vacaciones/administracion', '/solicitudes/fc/lego');
+    Route::redirect('/solicitudes/lego', '/solicitudes/fc/lego');
+    Route::redirect('/solicitudes/vacaciones-fc', '/solicitudes/fc/vacaciones-fc');
+    Route::redirect('/solicitudes/supervisores', '/solicitudes/fc/supervisores');
+
+    Route::get('/solicitudes/{group}/{policy}', [VacacionesController::class, 'adminPolicy'])
+        ->where('group', 'fc|dc')
+        ->where('policy', '[a-z0-9\-]+')
+        ->name('solicitudes.admin');
+
+    Route::post('/solicitudes/{group}/{policy}/run-etl', [VacacionesController::class, 'runEtl'])
+        ->where('group', 'fc|dc')
+        ->where('policy', '[a-z0-9\-]+')
+        ->name('solicitudes.runEtl');
+
+    Route::get('/saldos', [SaldosController::class, 'index'])->name('saldos.index');
+    Route::get('/saldos/log/{codigo}', [SaldosController::class, 'personLog'])->name('saldos.personLog');
+    Route::post('/saldos/sync', [SaldosController::class, 'run'])->name('saldos.run');
+
     Route::get('/vacaciones/estatus', [VacacionesController::class, 'status'])
         ->name('vacaciones.status');
 
-        Route::post('/vacaciones/run-export-sap', [App\Http\Controllers\VacacionesController::class, 'runExportSap'])
-    ->name('vacaciones.runExportSap');
+    Route::post('/vacaciones/run-export-sap', [VacacionesController::class, 'runExportSap'])
+        ->name('vacaciones.runExportSap');
+
+    Route::get('/vacaciones/estatus-dc', [VacacionesController::class, 'dcVacacionesStatus'])
+        ->name('vacaciones.dcStatus');
+
+    Route::get('/vacaciones/estatus-vacaciones-dc', [VacacionesController::class, 'dcVacacionesStatus'])
+        ->name('vacaciones.dcVacacionesStatus');
+
+    Route::get('/vacaciones/estatus-anticipos-dc', [VacacionesController::class, 'dcAnticiposStatus'])
+        ->name('vacaciones.dcAnticiposStatus');
+
+    Route::post('/solicitudes/dc/run-export-sap', [VacacionesController::class, 'runExportDcSap'])
+        ->name('solicitudes.dc.runExportSap');
+
+    Route::post('/solicitudes/dc/run-export-anticipos-sap', [VacacionesController::class, 'runExportAnticiposDcSap'])
+        ->name('solicitudes.dc.runExportAnticiposSap');
+
+    Route::post('/solicitudes/dc/export/{requestId}', [VacacionesController::class, 'exportDcRequest'])
+        ->where('requestId', '[0-9]+')
+        ->name('solicitudes.dc.exportRequest');
 });

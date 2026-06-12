@@ -15,6 +15,8 @@ class TimeOffRequest extends Model
     protected $fillable = [
         'request_id',
         'issuer_employee_internal_id',
+        'issuer_full_name',
+        'policy_type_id',
         'policy_name',
         'from_date',
         'to_date',
@@ -33,5 +35,17 @@ class TimeOffRequest extends Model
         'created_at'      => 'datetime',
         'resolution_date' => 'datetime',
         'etl_synced_at'   => 'datetime',
+        'policy_type_id'  => 'integer',
     ];
+
+    /**
+     * Solicitudes de una política (por ID Humand o nombre).
+     */
+    public function scopeForPolicyType($query, int $policyTypeId, string $policyName)
+    {
+        return $query->where(function ($q) use ($policyTypeId, $policyName) {
+            $q->where('policy_type_id', $policyTypeId)
+              ->orWhereRaw('UPPER(LTRIM(RTRIM(policy_name))) = ?', [strtoupper(trim($policyName))]);
+        });
+    }
 }

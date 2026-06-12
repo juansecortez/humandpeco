@@ -13,6 +13,8 @@
 
   <!-- CSS principal (usa tu build) -->
   <link href="{{ asset('css/material-dashboard.css') }}" rel="stylesheet" />
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  @stack('css')
   <style>
     /* Oculta barra de ofertas/preview si existiera */
     #ofBar { display:none; }

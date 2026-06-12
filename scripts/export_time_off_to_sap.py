@@ -65,7 +65,66 @@ HUMAND_DEFAULT_CANCEL_REASON = getenv_clean('HUMAND_CANCEL_REASON') or "SE CANCE
 PROCESS_STATES = [s.strip().upper() for s in (getenv_clean('PROCESS_STATES') or 'APPROVED,CANCELLED').split(',') if s.strip()]
 DO_DEDUP = bool_env(getenv_clean('SAP_EXPORT_DEDUP') or 'true', True)
 
-POLICY_CLAVE_MAP = {'VACACIONES FC': '6072', 'LEGO': '6073'}
+POLICY_CLAVE_MAP = {
+    'VACACIONES FC': '6072',
+    'SUPERVISORES': '6072',
+    'LEGO': '6073',
+    'ANTICIPOS DE VACACIONES': '6072',
+}
+
+# Respaldo por policy_type_id de Humand (si el nombre en BD varía)
+POLICY_TYPE_ID_CLAVE_MAP = {
+    9637: '6072',     # Vacaciones FC
+    308356: '6072',   # Supervisores → mismo tratamiento que vacaciones
+    172701: '6073',   # LEGO
+    308355: '6072',   # Anticipos DC → mismo envío que vacaciones (fecha inicio/fin)
+}
+
+def export_scope() -> str:
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        return sys.argv[1].strip().lower()
+    return (getenv_clean('SAP_EXPORT_SCOPE') or 'fc').strip().lower()
+
+def policy_type_ids_for_sap() -> list:
+    scope = export_scope()
+    if scope == 'anticipos':
+        raw = getenv_clean('SAP_EXPORT_ANTICIPOS_POLICY_TYPE_IDS') or '308355'
+    else:
+        raw = getenv_clean('SAP_EXPORT_POLICY_TYPE_IDS') or '9637,172701,308356'
+    ids = [x.strip() for x in raw.split(',') if x.strip().isdigit()]
+    if scope == 'anticipos':
+        return ids or ['308355']
+    return ids or ['9637', '172701', '308356']
+
+
+def sql_base_export() -> str:
+    state_ph = ', '.join(['?'] * len(PROCESS_STATES))
+    policy_ids = policy_type_ids_for_sap()
+    pid_ph = ', '.join(['?'] * len(policy_ids))
+    return f"""
+SELECT
+  r.request_id,
+  r.issuer_employee_internal_id,
+  r.issuer_full_name,
+  r.policy_name,
+  r.policy_type_id,
+  r.from_date,
+  r.to_date,
+  r.amount_requested,
+  UPPER(r.state) AS state,
+  CASE WHEN CHARINDEX('@', r.issuer_employee_internal_id) > 0
+         THEN LEFT(r.issuer_employee_internal_id, CHARINDEX('@', r.issuer_employee_internal_id)-1)
+       ELSE r.issuer_employee_internal_id
+  END AS usuario_id,
+  o.CodigoCol
+FROM dbo.time_off_requests r
+LEFT JOIN Organigrama.dbo.Organigrama o
+  ON o.UsuarioId = CASE WHEN CHARINDEX('@', r.issuer_employee_internal_id) > 0
+                          THEN LEFT(r.issuer_employee_internal_id, CHARINDEX('@', r.issuer_employee_internal_id)-1)
+                         ELSE r.issuer_employee_internal_id END
+WHERE UPPER(r.state) IN ({state_ph})
+  AND r.policy_type_id IN ({pid_ph})
+"""
 
 def build_session():
     s = requests.Session()
@@ -107,29 +166,6 @@ def connect_sqlserver():
     return conn
 
 # --- queries ---
-SQL_BASE = f"""
-SELECT
-  r.request_id,
-  r.issuer_employee_internal_id,
-  r.issuer_full_name,
-  r.policy_name,
-  r.from_date,
-  r.to_date,
-  r.amount_requested,
-  UPPER(r.state) AS state,
-  CASE WHEN CHARINDEX('@', r.issuer_employee_internal_id) > 0
-         THEN LEFT(r.issuer_employee_internal_id, CHARINDEX('@', r.issuer_employee_internal_id)-1)
-       ELSE r.issuer_employee_internal_id
-  END AS usuario_id,
-  o.CodigoCol
-FROM dbo.time_off_requests r
-LEFT JOIN Organigrama.dbo.Organigrama o
-  ON o.UsuarioId = CASE WHEN CHARINDEX('@', r.issuer_employee_internal_id) > 0
-                          THEN LEFT(r.issuer_employee_internal_id, CHARINDEX('@', r.issuer_employee_internal_id)-1)
-                         ELSE r.issuer_employee_internal_id END
-WHERE UPPER(r.state) IN ({', '.join(['?' for _ in PROCESS_STATES])})
-"""
-
 SQL_GET_LAST = """
 SELECT TOP 1 id, processed_state, response_ok, response_status, response_text,
        policy_name, clave, infotipo, from_date, to_date, dias, request_url
@@ -219,8 +255,16 @@ def zero_pad_personal(codigo_col):
     digits = ''.join(ch for ch in s if ch.isdigit())
     return digits.zfill(8) if digits else s
 
-def policy_to_clave(policy_name):
-    if not policy_name: return None
+def policy_to_clave(policy_name, policy_type_id=None):
+    if policy_type_id is not None:
+        try:
+            clave = POLICY_TYPE_ID_CLAVE_MAP.get(int(policy_type_id))
+            if clave:
+                return clave
+        except (TypeError, ValueError):
+            pass
+    if not policy_name:
+        return None
     return POLICY_CLAVE_MAP.get((policy_name or '').strip().upper())
 
 def build_log_url(accion, codigo_col, from_date, to_date, clave, dias):
@@ -336,9 +380,10 @@ def process():
         if DO_DEDUP:
             cur.execute(SQL_DEDUP)
 
-        cur.execute(SQL_BASE, *PROCESS_STATES)
+        scope = export_scope()
+        cur.execute(sql_base_export(), *PROCESS_STATES, *policy_type_ids_for_sap())
         rows = cur.fetchall()
-        print(f"Export SAP: {len(rows)} filas candidatas", flush=True)
+        print(f"Export SAP ({scope}): {len(rows)} filas candidatas", flush=True)
 
         total = 0
         for row in rows:
@@ -347,6 +392,7 @@ def process():
             full_name  = (row.issuer_full_name or '').strip() if hasattr(row, 'issuer_full_name') else ''
             usuario_id = row.usuario_id
             policy     = (row.policy_name or '').strip()
+            policy_type_id = getattr(row, 'policy_type_id', None)
             from_date  = row.from_date
             to_date    = row.to_date
             dias       = row.amount_requested
@@ -357,7 +403,7 @@ def process():
                 if email and '@' in email: full_name = email.split('@', 1)[0]
                 else: full_name = email or None
 
-            clave = policy_to_clave(policy)
+            clave = policy_to_clave(policy, policy_type_id)
 
             cur2 = conn.cursor(); cur2.execute(SQL_GET_LAST, request_id); last = cur2.fetchone(); cur2.close()
             cur3 = conn.cursor(); cur3.execute(SQL_HAS_APPROVED_OK, request_id); had_approved_ok = bool(cur3.fetchone()); cur3.close()

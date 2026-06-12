@@ -23,7 +23,9 @@ class RoleController extends Controller
     {
         $this->authorize('manage-users', User::class);
 
-        return view('roles.index', ['roles' => $model->all()]);
+        return view('roles.index', [
+            'roles' => $model->whereIn('id', config('users.assignable_role_ids', [1, 4, 5]))->orderBy('id')->get(),
+        ]);
     }
 
     /**
@@ -58,6 +60,10 @@ class RoleController extends Controller
      */
     public function edit(Role $role)
     {
+        if (!in_array((int) $role->id, config('users.assignable_role_ids', [1, 4, 5]), true)) {
+            abort(404);
+        }
+
         return view('roles.edit', compact('role'));
     }
 

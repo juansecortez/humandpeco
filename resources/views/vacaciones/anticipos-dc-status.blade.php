@@ -9,9 +9,9 @@
 @endphp
 
 @extends('layouts.app', [
-  'activePage' => $activePage ?? 'solicitudes-fc-status',
-  'menuParent' => $menuParent ?? 'solicitudes-fc',
-  'titlePage'  => $titlePage ?? 'Estatus SAP',
+  'activePage' => $activePage ?? 'solicitudes-dc-anticipos-status',
+  'menuParent' => $menuParent ?? 'solicitudes-dc',
+  'titlePage'  => $titlePage ?? 'Estatus Anticipos DC',
 ])
 
 @section('content')
@@ -73,9 +73,9 @@
       <div class="col-md-12">
         <div class="card">
           <div class="card-header card-header-rose card-header-icon">
-            <div class="card-icon"><i class="material-icons">compare_arrows</i></div>
+            <div class="card-icon"><i class="material-icons">event_available</i></div>
             <h4 class="card-title">{{ $titlePage }}</h4>
-            <p class="card-category">Historial de exportaciones a SAP</p>
+            <p class="card-category">Anticipos DC · fecha inicio, fin y días (mismo flujo que vacaciones FC)</p>
           </div>
 
           <div class="card-body">
@@ -94,7 +94,7 @@
             </div>
 
             <div class="row solicitudes-table-toolbar align-items-end mb-4">
-              <div class="col-lg-3 col-md-4 mb-3 mb-md-0">
+              <div class="col-lg-4 col-md-5 mb-3 mb-md-0">
                 <label for="filter-usuario">Buscar empleado</label>
                 <div class="input-group">
                   <div class="input-group-prepend">
@@ -112,24 +112,15 @@
                   @endforeach
                 </select>
               </div>
-              <div class="col-lg-2 col-md-3 mb-3 mb-md-0">
-                <label for="filter-politica">Política</label>
-                <select id="filter-politica" class="form-control">
-                  <option value="">Todas</option>
-                  @foreach(($policies ?? collect()) as $p)
-                    <option value="{{ $p }}">{{ $p }}</option>
-                  @endforeach
-                </select>
-              </div>
               <div class="col-lg-2 col-md-2 mb-3 mb-md-0">
                 <label>&nbsp;</label>
                 <button type="button" class="btn btn-default btn-block" id="btn-reset-filtros">
                   <i class="material-icons" style="font-size:18px;vertical-align:middle;">refresh</i> Limpiar
                 </button>
               </div>
-              <div class="col-lg-3 col-md-12 text-lg-right">
+              <div class="col-lg-4 col-md-12 text-lg-right">
                 <label class="d-none d-lg-block">&nbsp;</label>
-                <form id="form-export-sap" action="{{ route('vacaciones.runExportSap') }}" method="POST">
+                <form id="form-export-sap" action="{{ route('solicitudes.dc.runExportAnticiposSap') }}" method="POST">
                   @csrf
                   <button type="submit" class="btn btn-rose btn-block btn-lg" id="btn-run-export">
                     <i class="material-icons">send</i> Enviar a SAP
@@ -147,7 +138,6 @@
                       <th>Empleado</th>
                       <th>Nombre</th>
                       <th>No. personal</th>
-                      <th>Política</th>
                       <th>Desde</th>
                       <th>Hasta</th>
                       <th>Días</th>
@@ -177,7 +167,6 @@
                         </td>
                         <td>{{ $nombre }}</td>
                         <td>{{ $e->codigo_col ?: '—' }}</td>
-                        <td>{{ $e->policy_name }}</td>
                         <td>{{ optional($e->from_date)->format('d/m/Y') }}</td>
                         <td>{{ optional($e->to_date)->format('d/m/Y') }}</td>
                         <td>{{ $e->dias }}</td>
@@ -235,34 +224,32 @@
         pagingType: 'full_numbers',
         lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
         responsive: true,
-        order: [[10, 'desc']],
+        order: [[9, 'desc']],
         language: {
           search: '_INPUT_', searchPlaceholder: 'Buscar…', lengthMenu: 'Mostrar _MENU_',
           zeroRecords: 'Sin coincidencias', info: '_START_–_END_ de _TOTAL_',
-          infoEmpty: '0 registros', infoFiltered: '(de _MAX_)', emptyTable: 'Sin envíos registrados.',
+          infoEmpty: '0 registros', infoFiltered: '(de _MAX_)', emptyTable: 'Sin envíos de anticipos registrados.',
           paginate: { first: '«', last: '»', next: '›', previous: '‹' }
         },
         columnDefs: [
-          { targets: [8, 9], render: (d, t) => (t === 'sort' || t === 'filter') ? String(d).replace(/<[^>]*>/g, '').trim() : d },
-          { targets: 12, visible: false, searchable: false },
-          { targets: 11, orderable: false, searchable: false }
+          { targets: [7, 8], render: (d, t) => (t === 'sort' || t === 'filter') ? String(d).replace(/<[^>]*>/g, '').trim() : d },
+          { targets: 11, visible: false, searchable: false },
+          { targets: 10, orderable: false, searchable: false }
         ]
       });
 
       $.fn.dataTable.ext.search.push(function (settings, data) {
         const q = ($('#filter-usuario').val() || '').toLowerCase();
         const st = ($('#filter-estado').val() || '').toUpperCase();
-        const pol = ($('#filter-politica').val() || '');
         if (q && !(data[1].toLowerCase().includes(q) || data[2].toLowerCase().includes(q))) return false;
-        if (st && data[8].replace(/<[^>]*>/g, '').toUpperCase().trim() !== st) return false;
-        if (pol && data[4] !== pol) return false;
+        if (st && data[7].replace(/<[^>]*>/g, '').toUpperCase().trim() !== st) return false;
         return true;
       });
 
       $('#filter-usuario').on('input', () => dt.draw());
-      $('#filter-estado, #filter-politica').on('change', () => dt.draw());
+      $('#filter-estado').on('change', () => dt.draw());
       $('#btn-reset-filtros').on('click', () => {
-        $('#filter-usuario, #filter-estado, #filter-politica').val('');
+        $('#filter-usuario, #filter-estado').val('');
         dt.search('').columns().search('');
         dt.draw();
       });

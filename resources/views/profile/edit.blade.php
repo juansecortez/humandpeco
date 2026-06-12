@@ -1,129 +1,75 @@
-@extends('layouts.app', ['activePage' => 'profile', 'menuParent' => 'laravel', 'titlePage' => __('User Profile')])
+@php
+  $guard = session('auth_guard', 'web');
+  $authUser = auth()->user();
+  $defaultAvatar = asset(config('users.default_avatar', 'material/img/default-avatar.png'));
+
+  if ($guard === 'organigrama') {
+      $paired = \App\User::where('name', $authUser->getAuthIdentifier())->first();
+      $displayName = $authUser->NombreCompleto ?? $authUser->name ?? '—';
+      $displayEmail = $authUser->Correo ?? '—';
+      $displayUser = $authUser->UsuarioId ?? '—';
+      $displayRole = $paired?->role?->name ?? '—';
+      $displayPhoto = method_exists($authUser, 'profilePicture') ? $authUser->profilePicture() : $defaultAvatar;
+  } else {
+      $displayName = $authUser->name ?? '—';
+      $displayEmail = $authUser->email ?? '—';
+      $displayUser = $authUser->name ?? '—';
+      $displayRole = $authUser->role?->name ?? '—';
+      $displayPhoto = $defaultAvatar;
+      if ($authUser instanceof \App\User && $authUser->picture) {
+          $displayPhoto = $authUser->profilePicture();
+      }
+  }
+@endphp
+
+@extends('layouts.app', ['activePage' => 'profile', 'menuParent' => 'laravel', 'titlePage' => 'Mi perfil'])
 
 @section('content')
 <div class="content">
   <div class="container-fluid">
-    <div class="row">
-      <div class="col-md-8">
+    <div class="row justify-content-center">
+      <div class="col-lg-8 col-md-10">
         <div class="card">
-          <div class="card-header card-header-icon card-header-rose">
-            <div class="card-icon">
-              <i class="material-icons">perm_identity</i>
+          <div class="card-header card-header-rose card-header-icon">
+            <div class="card-icon"><i class="material-icons">person</i></div>
+            <h4 class="card-title">Mi perfil</h4>
+            <p class="card-category">Información de tu cuenta (solo lectura)</p>
+          </div>
+          <div class="card-body">
+            <div class="text-center mb-4">
+              <img src="{{ $displayPhoto }}" alt="Avatar"
+                style="width:120px;height:120px;object-fit:cover;border-radius:12px;border:1px solid #ddd;"
+                onerror="this.src='{{ $defaultAvatar }}'">
             </div>
-            <h4 class="card-title">{{ __('Edit Profile') }}
-            </h4>
-          </div>
-          <div class="card-body">
-            <form method="post" enctype="multipart/form-data" action="{{ route('profile.update') }}" autocomplete="off" class="form-horizontal">
-              @csrf
-              @method('put')
-
-              <div class="row" id="profile">
-                <label class="col-sm-2 col-form-label">{{ __('Profile photo') }}</label>
-                <div class="col-sm-7">
-                  <div class="fileinput fileinput-new text-center" data-provides="fileinput">
-                    <div class="fileinput-new thumbnail img-circle">
-                      @if (auth()->user()->picture)
-                        <img src="{{ auth()->user()->profilePicture() }}" alt="...">
-                      @else
-                        <img src="{{ asset('material') }}/img/placeholder.jpg" alt="...">
-                      @endif
-                    </div>
-                    <div class="fileinput-preview fileinput-exists thumbnail img-circle"></div>
-                    <div>
-                      <span class="btn btn-rose btn-file">
-                        <span class="fileinput-new">{{ __('Select image') }}</span>
-                        <span class="fileinput-exists">{{ __('Change') }}</span>
-                        <input type="file" name="photo" id = "input-picture" />
-                      </span>
-                        <a href="#pablo" class="btn btn-danger fileinput-exists" data-dismiss="fileinput"><i class="fa fa-times"></i> {{ __('Remove') }}</a>
-                    </div>
-                    @include('alerts.feedback', ['field' => 'photo'])
-                  </div>
-                </div>
-              </div>
-              <div class="row">
-                <label class="col-sm-2 col-form-label">{{ __('Name') }}</label>
-                <div class="col-sm-7">
-                  <div class="form-group{{ $errors->has('name') ? ' has-danger' : '' }}">
-                    <input class="form-control{{ $errors->has('name') ? ' is-invalid' : '' }}" name="name" id="input-name" type="text" placeholder="{{ __('Name') }}" value="{{ old('name', auth()->user()->name) }}" required="true" aria-required="true"/>
-                    @include('alerts.feedback', ['field' => 'name'])
-                  </div>
-                </div>
-              </div>
-              <div class="row">
-                <label class="col-sm-2 col-form-label">{{ __('Email') }}</label>
-                <div class="col-sm-7">
-                  <div class="form-group{{ $errors->has('email') ? ' has-danger' : '' }}">
-                    <input class="form-control{{ $errors->has('email') ? ' is-invalid' : '' }}" name="email" id="input-email" type="email" placeholder="{{ __('Email') }}" value="{{ old('email', auth()->user()->email) }}" required />
-                    @include('alerts.feedback', ['field' => 'email'])
-                  </div>
-                </div>
-              </div>
-              <button type="submit" class="btn btn-rose pull-right">{{ __('Update Profile') }}</button>
-              <div class="clearfix"></div>
-            </form>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header card-header-icon card-header-rose">
-            <div class="card-icon">
-              <i class="material-icons">lock</i>
-            </div>
-            <h4 class="card-title">{{ __('Change password') }}</h4>
-          </div>
-          <div class="card-body">
-            <form method="post" action="{{ route('profile.password') }}" class="form-horizontal">
-              @csrf
-              @method('put')
-
-              <div class="row">
-                <label class="col-sm-2 col-form-label" for="input-current-password">{{ __('Current Password') }}</label>
-                <div class="col-sm-7">
-                  <div class="form-group{{ $errors->has('old_password') ? ' has-danger' : '' }}">
-                    <input class="form-control{{ $errors->has('old_password') ? ' is-invalid' : '' }}" input type="password" name="old_password" id="input-current-password" placeholder="{{ __('Current Password') }}" value="" required />
-                    @include('alerts.feedback', ['field' => 'old_password'])
-                  </div>
-                </div>
-              </div>
-              <div class="row">
-                <label class="col-sm-2 col-form-label" for="input-password">{{ __('New Password') }}</label>
-                <div class="col-sm-7">
-                  <div class="form-group{{ $errors->has('password') ? ' has-danger' : '' }}">
-                    <input class="form-control{{ $errors->has('password') ? ' is-invalid' : '' }}" name="password" id="input-password" type="password" placeholder="{{ __('New Password') }}" value="" required />
-                    @include('alerts.feedback', ['field' => 'password'])
-                  </div>
-                </div>
-              </div>
-              <div class="row">
-                <label class="col-sm-2 col-form-label" for="input-password-confirmation">{{ __('Confirm New Password') }}</label>
-                <div class="col-sm-7">
-                  <div class="form-group">
-                    <input class="form-control" name="password_confirmation" id="input-password-confirmation" type="password" placeholder="{{ __('Confirm New Password') }}" value="" required />
-                  </div>
-                </div>
-              </div>
-              <button type="submit" class="btn btn-rose pull-right">{{ __('Change password') }}</button>
-              <div class="clearfix"></div>
-            </form>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="card card-profile">
-          <div class="card-avatar">
-            <a href="#pablo">
-              <img class="img" src="{{ auth()->user()->profilePicture() }}" />
-            </a>
-          </div>
-          <div class="card-body">
-            <h6 class="card-category text-gray">CEO / Co-Founder</h6>
-            <h4 class="card-title">Alec Thompson</h4>
-            <p class="card-description">
-              Don't be scared of the truth because we need to restart the human foundation in truth And I love you like Kanye loves Kanye I love Rick Owens’ bed design but the back is...
-            </p>
-            <a href="#pablo" class="btn btn-rose btn-round">Follow</a>
+            <table class="table table-striped">
+              <tbody>
+                <tr>
+                  <th style="width:180px;">Nombre</th>
+                  <td>{{ $displayName }}</td>
+                </tr>
+                <tr>
+                  <th>Usuario</th>
+                  <td>{{ $displayUser }}</td>
+                </tr>
+                <tr>
+                  <th>Correo</th>
+                  <td>{{ $displayEmail }}</td>
+                </tr>
+                <tr>
+                  <th>Rol en la app</th>
+                  <td>{{ $displayRole }}</td>
+                </tr>
+              </tbody>
+            </table>
+            @if($guard === 'organigrama')
+              <p class="text-muted small mb-0">
+                La contraseña se valida con tu cuenta corporativa. Para cambios de acceso contacta a IT o al administrador.
+              </p>
+            @else
+              <p class="text-muted small mb-0">
+                Los datos de administrador local los gestiona el equipo de IT.
+              </p>
+            @endif
           </div>
         </div>
       </div>
@@ -131,23 +77,3 @@
   </div>
 </div>
 @endsection
-
-@push('js')
-<script>
-  $(document).ready(function () {
-    @if ($errors->has('not_allow_profile'))
-      $.notify({
-        icon: "close",
-        message: "{{ $errors->first('not_allow_profile') }}"
-      }, {
-        type: 'danger',
-        timer: 3000,
-        placement: {
-          from: 'top',
-          align: 'right'
-        }
-      });
-    @endif
-  });
-</script>
-@endpush
