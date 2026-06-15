@@ -92,7 +92,7 @@ return [
         'LoginTimeout' => (int) env('DB_LOGIN_TIMEOUT', 5),
         'ConnectRetryCount'    => (int) env('DB_CONNECT_RETRY_COUNT', 2),
         'ConnectRetryInterval' => (int) env('DB_CONNECT_RETRY_INTERVAL', 2),
-        PDO::SQLSRV_ATTR_QUERY_TIMEOUT => (int) env('DB_QUERY_TIMEOUT', 15),
+        PDO::SQLSRV_ATTR_QUERY_TIMEOUT => (int) env('DB_QUERY_TIMEOUT', 120),
         PDO::SQLSRV_ATTR_ENCODING => PDO::SQLSRV_ENCODING_UTF8,
     ] : [],
 ],

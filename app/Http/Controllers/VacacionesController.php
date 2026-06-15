@@ -209,13 +209,10 @@ class VacacionesController extends Controller
     {
 
         $fcNames = $this->fcPolicyNames();
+        $fcIds   = $this->fcPolicyTypeIds();
 
         $exports = SapTimeOffExport::query()
-            ->where(function ($q) use ($fcNames) {
-                foreach ($fcNames as $name) {
-                    $q->orWhereRaw('UPPER(LTRIM(RTRIM(policy_name))) = ?', [$name]);
-                }
-            })
+            ->forPolicies($fcIds, $fcNames, ['%Supervisor%'])
             ->orderByDesc('created_at')
             ->get();
 
@@ -302,11 +299,12 @@ class VacacionesController extends Controller
 
     {
 
-        $policyName = $this->anticiposDcPolicyName();
+        $policyId   = (int) config('time_off_policies.dc.anticipos-vacaciones.policy_type_id', 308355);
+        $policyName = trim((string) config('time_off_policies.dc.anticipos-vacaciones.policy_name', 'ANTICIPOS DE VACACIONES'));
 
         $exports = SapTimeOffExport::query()
-            ->whereRaw('UPPER(LTRIM(RTRIM(policy_name))) = ?', [$policyName])
-            ->orderBy('created_at', 'desc')
+            ->forPolicies([$policyId], [$policyName], ['%Anticipo%'])
+            ->orderByDesc('created_at')
             ->get();
 
         $procStates = $exports->pluck('processed_state')->filter()->unique()->values();
@@ -474,7 +472,17 @@ class VacacionesController extends Controller
     {
         return collect(config('time_off_policies.fc', []))
             ->pluck('policy_name')
-            ->map(fn ($n) => strtoupper(trim((string) $n)))
+            ->map(fn ($n) => trim((string) $n))
+            ->values()
+            ->all();
+    }
+
+    /** @return list<int> */
+    private function fcPolicyTypeIds(): array
+    {
+        return collect(config('time_off_policies.fc', []))
+            ->pluck('policy_type_id')
+            ->map(fn ($id) => (int) $id)
             ->values()
             ->all();
     }

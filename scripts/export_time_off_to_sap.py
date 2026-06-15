@@ -225,6 +225,57 @@ USING (SELECT
     ? AS usuario_id,
     ? AS codigo_col,
     ? AS policy_name,
+    ? AS policy_type_id,
+    ? AS clave,
+    ? AS infotipo,
+    ? AS from_date,
+    ? AS to_date,
+    ? AS dias,
+    ? AS request_url,
+    ? AS response_status,
+    ? AS response_ok,
+    ? AS response_text,
+    SYSUTCDATETIME() AS responded_at
+) AS S
+ON (T.request_id = S.request_id)
+WHEN MATCHED THEN
+  UPDATE SET
+    processed_state = S.processed_state,
+    issuer_employee_internal_id = S.issuer_employee_internal_id,
+    issuer_full_name            = S.issuer_full_name,
+    usuario_id  = S.usuario_id,
+    codigo_col  = S.codigo_col,
+    policy_name = S.policy_name,
+    policy_type_id = S.policy_type_id,
+    clave       = S.clave,
+    infotipo    = S.infotipo,
+    from_date   = S.from_date,
+    to_date     = S.to_date,
+    dias        = S.dias,
+    request_url = S.request_url,
+    response_status = S.response_status,
+    response_ok     = S.response_ok,
+    response_text   = S.response_text,
+    responded_at    = S.responded_at
+WHEN NOT MATCHED THEN
+  INSERT (request_id, processed_state, issuer_employee_internal_id, issuer_full_name, usuario_id, codigo_col,
+          policy_name, policy_type_id, clave, infotipo, from_date, to_date, dias,
+          request_url, response_status, response_ok, response_text, created_at, responded_at)
+  VALUES (S.request_id, S.processed_state, S.issuer_employee_internal_id, S.issuer_full_name, S.usuario_id, S.codigo_col,
+          S.policy_name, S.policy_type_id, S.clave, S.infotipo, S.from_date, S.to_date, S.dias,
+          S.request_url, S.response_status, S.response_ok, S.response_text, SYSUTCDATETIME(), S.responded_at);
+"""
+
+SQL_UPSERT_LEGACY = """
+MERGE dbo.sap_time_off_exports AS T
+USING (SELECT
+    ? AS request_id,
+    ? AS processed_state,
+    ? AS issuer_employee_internal_id,
+    ? AS issuer_full_name,
+    ? AS usuario_id,
+    ? AS codigo_col,
+    ? AS policy_name,
     ? AS clave,
     ? AS infotipo,
     ? AS from_date,
@@ -264,7 +315,19 @@ WHEN NOT MATCHED THEN
           S.request_url, S.response_status, S.response_ok, S.response_text, SYSUTCDATETIME(), S.responded_at);
 """
 
-# --- helpers de formato ---
+_EXPORT_HAS_POLICY_TYPE_ID = False
+
+def detect_export_columns(cur):
+    global _EXPORT_HAS_POLICY_TYPE_ID
+    cur.execute("""
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'sap_time_off_exports'
+          AND COLUMN_NAME = 'policy_type_id'
+    """)
+    _EXPORT_HAS_POLICY_TYPE_ID = cur.fetchone() is not None
+    if not _EXPORT_HAS_POLICY_TYPE_ID:
+        print("Aviso: columna sap_time_off_exports.policy_type_id ausente; ejecute php artisan migrate", flush=True)
+
 def fmt_date_sap(d):
     if not d: return None
     if isinstance(d, datetime): d = d.date()
@@ -354,7 +417,31 @@ def _lookup_codigo_organigrama(cur, uid, internal):
     return None
 
 def resolve_codigo_col(conn, internal_id, usuario_id, request_id=None) -> str | None:
-    """Resuelve CodigoCol: export previo, patrón DC, organigrama o dígitos."""
+    """Resuelve CodigoCol: join por request_id, export previo, patrón DC, organigrama."""
+    if request_id is not None:
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT TOP 1 o.CodigoCol
+                FROM dbo.time_off_requests r
+                LEFT JOIN Organigrama.dbo.OrganigramaCompleto o ON (
+                    o.UsuarioId = CASE WHEN CHARINDEX('@', r.issuer_employee_internal_id) > 0
+                        THEN LEFT(r.issuer_employee_internal_id, CHARINDEX('@', r.issuer_employee_internal_id)-1)
+                        ELSE r.issuer_employee_internal_id END
+                    OR LOWER(LTRIM(RTRIM(o.Correo))) = LOWER(LTRIM(RTRIM(r.issuer_employee_internal_id)))
+                )
+                WHERE r.request_id = ?
+                """,
+                request_id,
+            )
+            row = cur.fetchone()
+            cur.close()
+            if row and row.CodigoCol:
+                return str(row.CodigoCol).strip()
+        except Exception as ex:
+            dbg(f"resolve_codigo_col via request_id {request_id}: {ex}")
+
     if request_id is not None:
         try:
             cur = conn.cursor()
@@ -363,6 +450,7 @@ def resolve_codigo_col(conn, internal_id, usuario_id, request_id=None) -> str | 
                 SELECT TOP 1 codigo_col
                 FROM dbo.sap_time_off_exports
                 WHERE request_id = ? AND codigo_col IS NOT NULL AND LTRIM(RTRIM(codigo_col)) <> ''
+                  AND response_ok = 1
                 ORDER BY id DESC
                 """,
                 request_id,
@@ -372,7 +460,7 @@ def resolve_codigo_col(conn, internal_id, usuario_id, request_id=None) -> str | 
             if row and row.codigo_col:
                 return str(row.codigo_col).strip()
         except Exception as ex:
-            dbg(f"resolve_codigo_col prior export error: {ex}")
+            dbg(f"resolve_codigo_col prior ok export: {ex}")
 
     internal = (internal_id or '').strip()
     if not internal:
@@ -491,14 +579,22 @@ def humand_cancel_request(request_id: int, reason: str) -> tuple[int, bool, str]
         return (0, False, f"ERROR_HUMAND_REQUEST: {ex}")
 
 def upsert(cur, *, request_id, processed_state, email, issuer_full_name, usuario_id, codigo_col,
-           policy_name, clave, infotipo, from_date, to_date, dias,
+           policy_name, policy_type_id, clave, infotipo, from_date, to_date, dias,
            request_url, response_status, response_ok, response_text):
-    row = (
-        request_id, processed_state, email, issuer_full_name, usuario_id, codigo_col,
-        policy_name, clave, infotipo, from_date, to_date, dias,
-        request_url, response_status, 1 if response_ok else 0, response_text
-    )
-    cur.execute(SQL_UPSERT, row)
+    if _EXPORT_HAS_POLICY_TYPE_ID:
+        row = (
+            request_id, processed_state, email, issuer_full_name, usuario_id, codigo_col,
+            policy_name, policy_type_id, clave, infotipo, from_date, to_date, dias,
+            request_url, response_status, 1 if response_ok else 0, response_text
+        )
+        cur.execute(SQL_UPSERT, row)
+    else:
+        row = (
+            request_id, processed_state, email, issuer_full_name, usuario_id, codigo_col,
+            policy_name, clave, infotipo, from_date, to_date, dias,
+            request_url, response_status, 1 if response_ok else 0, response_text
+        )
+        cur.execute(SQL_UPSERT_LEGACY, row)
 
 # ---------- main ----------
 def process():
@@ -512,6 +608,7 @@ def process():
     conn = connect_sqlserver()
     cur = conn.cursor()
     try:
+        detect_export_columns(cur)
         if DO_DEDUP:
             cur.execute(SQL_DEDUP)
 
@@ -566,7 +663,7 @@ def process():
                             err_detail.append(f"CodigoCol no resuelto internal={email!r} usuario={usuario_id!r}")
                         upsert(cur,
                             request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
-                            codigo_col=codigo_col, policy_name=policy, clave=(clave or '??'), infotipo=INFOTIPO,
+                            codigo_col=codigo_col, policy_name=policy, policy_type_id=effective_policy_id, clave=(clave or '??'), infotipo=INFOTIPO,
                             from_date=from_date, to_date=to_date, dias=dias,
                             request_url=req_url, response_status=(last.response_status if last else None),
                             response_ok=False, response_text="ACCION=? | ERROR: " + '; '.join(err_detail))
@@ -585,12 +682,18 @@ def process():
                 else:
                     if not clave or not codigo_col:
                         req_url = build_log_url('DEL?', codigo_col, from_date, to_date, (clave or '??'), dias)
+                        err_detail = []
+                        if not clave:
+                            err_detail.append(f"clave desconocida policy={policy!r} id={effective_policy_id}")
+                        if not codigo_col:
+                            err_detail.append(f"CodigoCol no resuelto internal={email!r} usuario={usuario_id!r}")
                         upsert(cur,
                             request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
-                            codigo_col=codigo_col, policy_name=policy, clave=(clave or '??'), infotipo=INFOTIPO,
+                            codigo_col=codigo_col, policy_name=policy, policy_type_id=effective_policy_id, clave=(clave or '??'), infotipo=INFOTIPO,
                             from_date=from_date, to_date=to_date, dias=dias,
                             request_url=req_url, response_status=(last.response_status if last else None),
-                            response_ok=False, response_text="ACCION=? | ERROR: datos insuficientes (clave/codigo_col)")
+                            response_ok=False, response_text="ACCION=? | ERROR: " + '; '.join(err_detail))
+                        print(f" ! req {request_id} ({policy}): omitido DEL -> {'; '.join(err_detail)}", flush=True)
                         total += 1
                         continue
                     accion = 'DEL'; must_call_sap = True
@@ -647,7 +750,7 @@ def process():
                 msg = f"ACCION={accion} | {text}{humand_note}"
                 upsert(cur,
                     request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
-                    codigo_col=codigo_col, policy_name=policy, clave=str(clave), infotipo=INFOTIPO,
+                    codigo_col=codigo_col, policy_name=policy, policy_type_id=effective_policy_id, clave=str(clave), infotipo=INFOTIPO,
                     from_date=from_date, to_date=to_date, dias=dias,
                     request_url=req_url, response_status=status, response_ok=ok, response_text=msg)
 
@@ -660,7 +763,7 @@ def process():
                 else:
                     upsert(cur,
                         request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
-                        codigo_col=codigo_col, policy_name=policy, clave=str(clave or '??'), infotipo=INFOTIPO,
+                        codigo_col=codigo_col, policy_name=policy, policy_type_id=effective_policy_id, clave=str(clave or '??'), infotipo=INFOTIPO,
                         from_date=from_date, to_date=to_date, dias=dias,
                         request_url=req_url, response_status=status, response_ok=okflag, response_text=msg)
 
