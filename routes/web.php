@@ -146,7 +146,17 @@ Route::group(['middleware' => 'auth:web,organigrama'], function () {
     Route::get('/vacaciones/estatus', [VacacionesController::class, 'status'])
         ->name('vacaciones.status');
 
-    Route::post('/vacaciones/run-export-sap', [VacacionesController::class, 'runExportSap'])
+    Route::get('/vacaciones/estatus/vacaciones-fc', [VacacionesController::class, 'statusVacacionesFc'])
+        ->name('vacaciones.status.vacacionesFc');
+
+    Route::get('/vacaciones/estatus/lego', [VacacionesController::class, 'statusLego'])
+        ->name('vacaciones.status.lego');
+
+    Route::get('/vacaciones/estatus/supervisores', [VacacionesController::class, 'statusSupervisores'])
+        ->name('vacaciones.status.supervisores');
+
+    Route::post('/vacaciones/run-export-sap/{scope?}', [VacacionesController::class, 'runExportSap'])
+        ->where('scope', 'fc|vacaciones-fc|lego|supervisores')
         ->name('vacaciones.runExportSap');
 
     Route::get('/vacaciones/estatus-dc', [VacacionesController::class, 'dcVacacionesStatus'])

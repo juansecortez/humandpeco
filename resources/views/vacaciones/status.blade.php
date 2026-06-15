@@ -129,13 +129,13 @@
               </div>
               <div class="col-lg-3 col-md-12 text-lg-right">
                 <label class="d-none d-lg-block">&nbsp;</label>
-                <form id="form-export-sap" action="{{ route('vacaciones.runExportSap') }}" method="POST">
+                <form id="form-export-sap" action="{{ $exportAction ?? route('vacaciones.runExportSap') }}" method="POST">
                   @csrf
                   <button type="submit" class="btn btn-rose btn-block btn-lg" id="btn-run-export">
                     <i class="material-icons">send</i> Enviar a SAP
                   </button>
                 </form>
-                <p class="text-muted small mt-2 mb-0 text-lg-right">Incluye Vacaciones FC, LEGO y Supervisores. Anticipos DC → Estatus Anticipos DC.</p>
+                <p class="text-muted small mt-2 mb-0 text-lg-right">{{ $exportInfo ?? 'Incluye Vacaciones FC, LEGO y Supervisores. Anticipos DC → Estatus Anticipos DC.' }}</p>
               </div>
             </div>
 

@@ -202,51 +202,70 @@ class VacacionesController extends Controller
 
 
 
-    /** Estatus de envíos a SAP (solo políticas FC) */
-
+    /** @deprecated Estatus FC unificado → ahora separado por política. */
     public function status()
-
     {
-
-        $fcNames = $this->fcPolicyNames();
-        $fcIds   = $this->fcPolicyTypeIds();
-
-        $exports = $this->sapStatusExports($fcIds, $fcNames, ['%SUPERVISOR%']);
-
-
-
-        $procStates = $exports->pluck('processed_state')->filter()->unique()->values();
-
-        $policies   = $exports->pluck('policy_name')->filter()->unique()->values();
-
-
-
-        return view('vacaciones.status', [
-
-            'activePage'  => 'solicitudes-fc-status',
-
-            'menuParent'  => 'solicitudes-fc',
-
-            'titlePage'   => 'Estatus de envíos (SAP)',
-
-            'exports'     => $exports,
-
-            'procStates'  => $procStates,
-
-            'policies'    => $policies,
-
-        ]);
-
+        return redirect()->route('vacaciones.status.vacacionesFc');
     }
 
-
-
-    public function runExportSap(Request $request)
-
+    /** Estatus SAP: solo Vacaciones FC. */
+    public function statusVacacionesFc()
     {
+        return $this->renderFcStatus('vacaciones-fc', 'vacaciones-fc', [], 'solicitudes-fc-status-vacaciones');
+    }
 
-        return $this->runDateRangeExport($request, 'fc');
+    /** Estatus SAP: solo LEGO. */
+    public function statusLego()
+    {
+        return $this->renderFcStatus('lego', 'lego', ['%LEGO%'], 'solicitudes-fc-status-lego');
+    }
 
+    /** Estatus SAP: solo Supervisores. */
+    public function statusSupervisores()
+    {
+        return $this->renderFcStatus('supervisores', 'supervisores', ['%SUPERVISOR%'], 'solicitudes-fc-status-supervisores');
+    }
+
+    /**
+     * Renderiza el estatus SAP de una sola política FC (lee solo la tabla de exports).
+     *
+     * @param  array<string>  $nameLike
+     */
+    private function renderFcStatus(string $slug, string $scope, array $nameLike, string $activePage)
+    {
+        $cfg        = config("time_off_policies.fc.$slug", []);
+        $policyId   = (int) ($cfg['policy_type_id'] ?? 0);
+        $policyName = (string) ($cfg['policy_name'] ?? '');
+        $label      = (string) ($cfg['label'] ?? $slug);
+
+        $exports = SapTimeOffExport::query()
+            ->forPolicies([$policyId], [$policyName], $nameLike)
+            ->orderByDesc('created_at')
+            ->get();
+
+        $procStates = $exports->pluck('processed_state')->filter()->unique()->values();
+        $policies   = $exports->pluck('policy_name')->filter()->unique()->values();
+
+        return view('vacaciones.status', [
+            'activePage'   => $activePage,
+            'menuParent'   => 'solicitudes-fc',
+            'titlePage'    => 'Estatus SAP — ' . $label,
+            'exports'      => $exports,
+            'procStates'   => $procStates,
+            'policies'     => $policies,
+            'exportAction' => route('vacaciones.runExportSap', ['scope' => $scope]),
+            'exportInfo'   => 'Envía a SAP solo ' . $label . '.',
+        ]);
+    }
+
+    public function runExportSap(Request $request, string $scope = 'fc')
+    {
+        $allowed = ['fc', 'vacaciones-fc', 'lego', 'supervisores'];
+        if (!in_array($scope, $allowed, true)) {
+            $scope = 'fc';
+        }
+
+        return $this->runDateRangeExport($request, $scope);
     }
 
 
@@ -299,7 +318,10 @@ class VacacionesController extends Controller
         $policyId   = (int) config('time_off_policies.dc.anticipos-vacaciones.policy_type_id', 308355);
         $policyName = $this->anticiposDcPolicyName();
 
-        $exports = $this->sapStatusExports([$policyId], [$policyName], ['%ANTICIPO%']);
+        $exports = SapTimeOffExport::query()
+            ->forPolicies([$policyId], [$policyName], ['%ANTICIPO%'])
+            ->orderByDesc('created_at')
+            ->get();
 
         $procStates = $exports->pluck('processed_state')->filter()->unique()->values();
 
@@ -471,61 +493,6 @@ class VacacionesController extends Controller
             ->all();
     }
 
-    /**
-     * Exportaciones SAP + solicitudes APPROVED/CANCELLED aún sin fila de envío.
-     *
-     * @param  array<int>  $policyTypeIds
-     * @param  array<string>  $policyNames
-     * @param  array<string>  $nameLike
-     */
-    private function sapStatusExports(array $policyTypeIds, array $policyNames, array $nameLike = [])
-    {
-        $exports = SapTimeOffExport::query()
-            ->forPolicies($policyTypeIds, $policyNames, $nameLike)
-            ->orderByDesc('created_at')
-            ->get();
-
-        $requests = TimeOffRequest::query()
-            ->forPolicies($policyTypeIds, $policyNames, $nameLike)
-            ->whereIn('state', ['APPROVED', 'CANCELLED', 'approved', 'cancelled'])
-            ->orderByDesc('created_at')
-            ->get();
-
-        $exportedIds = $exports->pluck('request_id')->unique()->flip();
-
-        foreach ($requests as $req) {
-            if ($exportedIds->has($req->request_id)) {
-                continue;
-            }
-
-            $usuarioId = $req->issuer_employee_internal_id;
-            if ($usuarioId && str_contains($usuarioId, '@')) {
-                $usuarioId = strstr($usuarioId, '@', true) ?: $usuarioId;
-            }
-
-            $exports->push(new SapTimeOffExport([
-                'request_id'                  => $req->request_id,
-                'processed_state'             => strtoupper((string) $req->state),
-                'issuer_employee_internal_id' => $req->issuer_employee_internal_id,
-                'issuer_full_name'            => $req->issuer_full_name,
-                'usuario_id'                  => $usuarioId,
-                'policy_name'                 => $req->policy_name,
-                'policy_type_id'              => $req->policy_type_id,
-                'from_date'                   => $req->from_date,
-                'to_date'                     => $req->to_date,
-                'dias'                        => $req->amount_requested,
-                'response_status'             => null,
-                'response_ok'                 => false,
-                'response_text'               => null,
-                'created_at'                  => null,
-            ]));
-        }
-
-        return $exports
-            ->sortByDesc(fn ($e) => $e->created_at?->timestamp ?? $e->request_id)
-            ->values();
-    }
-
     /** @return list<int> */
     private function fcPolicyTypeIds(): array
     {
@@ -551,14 +518,14 @@ class VacacionesController extends Controller
 
     private function runDateRangeExport(Request $request, string $scope)
     {
-        $timeout = 120;
-        $this->extendPhpRuntime($timeout + 30);
+        // Lotes grandes (p. ej. Vacaciones FC) pueden tardar: sin límite de tiempo.
+        $this->extendPhpRuntime(0);
 
         $python = $this->pythonBinary();
         $script = base_path('scripts/export_time_off_to_sap.py');
 
-        $process = $this->runPythonProcess([$python, $script, $scope], $timeout);
-        $process->setIdleTimeout(30);
+        $process = $this->runPythonProcess([$python, $script, $scope], null);
+        $process->setIdleTimeout(null);
 
         try {
             $process->run();
@@ -578,7 +545,7 @@ class VacacionesController extends Controller
 
 
 
-    private function runPythonProcess(array $cmd, int $timeout): Process
+    private function runPythonProcess(array $cmd, ?int $timeout): Process
 
     {
 

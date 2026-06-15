@@ -175,10 +175,22 @@
                             </a>
                         </li>
                         @endforeach
-                        <li class="nav-item{{ ($activePage ?? '') == 'solicitudes-fc-status' ? ' active' : '' }}">
-                            <a class="nav-link" href="{{ route('vacaciones.status') }}">
+                        <li class="nav-item{{ ($activePage ?? '') == 'solicitudes-fc-status-vacaciones' ? ' active' : '' }}">
+                            <a class="nav-link" href="{{ route('vacaciones.status.vacacionesFc') }}">
+                                <span class="sidebar-mini"> EV </span>
+                                <span class="sidebar-normal"> {{ __('Estatus Vacaciones FC') }} </span>
+                            </a>
+                        </li>
+                        <li class="nav-item{{ ($activePage ?? '') == 'solicitudes-fc-status-lego' ? ' active' : '' }}">
+                            <a class="nav-link" href="{{ route('vacaciones.status.lego') }}">
+                                <span class="sidebar-mini"> EL </span>
+                                <span class="sidebar-normal"> {{ __('Estatus LEGO') }} </span>
+                            </a>
+                        </li>
+                        <li class="nav-item{{ ($activePage ?? '') == 'solicitudes-fc-status-supervisores' ? ' active' : '' }}">
+                            <a class="nav-link" href="{{ route('vacaciones.status.supervisores') }}">
                                 <span class="sidebar-mini"> ES </span>
-                                <span class="sidebar-normal"> {{ __('Estatus SAP') }} </span>
+                                <span class="sidebar-normal"> {{ __('Estatus Supervisores') }} </span>
                             </a>
                         </li>
                     </ul>
