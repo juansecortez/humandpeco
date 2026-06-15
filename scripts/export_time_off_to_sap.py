@@ -96,11 +96,40 @@ def policy_type_ids_for_sap() -> list:
         return ids or ['308355']
     return ids or ['9637', '172701', '308356']
 
+SCOPE_POLICY_NAMES = {
+    'fc': ['VACACIONES FC', 'LEGO', 'SUPERVISORES'],
+    'anticipos': ['ANTICIPOS DE VACACIONES'],
+}
+
+def policy_names_for_sap() -> list:
+    scope = export_scope()
+    if scope == 'anticipos':
+        raw = getenv_clean('SAP_EXPORT_ANTICIPOS_POLICY_NAMES') or 'ANTICIPOS DE VACACIONES'
+    else:
+        raw = getenv_clean('SAP_EXPORT_POLICY_NAMES') or 'VACACIONES FC,LEGO,SUPERVISORES'
+    names = [n.strip().upper() for n in raw.split(',') if n.strip()]
+    return names or SCOPE_POLICY_NAMES.get(scope, SCOPE_POLICY_NAMES['fc'])
+
 
 def sql_base_export() -> str:
     state_ph = ', '.join(['?'] * len(PROCESS_STATES))
     policy_ids = policy_type_ids_for_sap()
     pid_ph = ', '.join(['?'] * len(policy_ids))
+    policy_names = policy_names_for_sap()
+    name_ph = ', '.join(['?'] * len(policy_names))
+    scope = export_scope()
+    like_parts = []
+    if scope == 'anticipos':
+        like_parts = [
+            "UPPER(r.policy_name) LIKE '%ANTICIPO%'",
+        ]
+    else:
+        like_parts = [
+            "UPPER(r.policy_name) LIKE '%SUPERVISOR%'",
+            "UPPER(r.policy_name) LIKE '%LEGO%'",
+            "(UPPER(r.policy_name) LIKE '%VACACIONES%' AND UPPER(r.policy_name) NOT LIKE '%DC%' AND UPPER(r.policy_name) NOT LIKE '%ANTICIPO%')",
+        ]
+    like_sql = (' OR ' + ' OR '.join(like_parts)) if like_parts else ''
     return f"""
 SELECT
   r.request_id,
@@ -115,15 +144,13 @@ SELECT
   CASE WHEN CHARINDEX('@', r.issuer_employee_internal_id) > 0
          THEN LEFT(r.issuer_employee_internal_id, CHARINDEX('@', r.issuer_employee_internal_id)-1)
        ELSE r.issuer_employee_internal_id
-  END AS usuario_id,
-  o.CodigoCol
+  END AS usuario_id
 FROM dbo.time_off_requests r
-LEFT JOIN Organigrama.dbo.Organigrama o
-  ON o.UsuarioId = CASE WHEN CHARINDEX('@', r.issuer_employee_internal_id) > 0
-                          THEN LEFT(r.issuer_employee_internal_id, CHARINDEX('@', r.issuer_employee_internal_id)-1)
-                         ELSE r.issuer_employee_internal_id END
 WHERE UPPER(r.state) IN ({state_ph})
-  AND r.policy_type_id IN ({pid_ph})
+  AND (
+    r.policy_type_id IN ({pid_ph})
+    OR UPPER(LTRIM(RTRIM(r.policy_name))) IN ({name_ph}){like_sql}
+  )
 """
 
 def build_session():
@@ -255,17 +282,125 @@ def zero_pad_personal(codigo_col):
     digits = ''.join(ch for ch in s if ch.isdigit())
     return digits.zfill(8) if digits else s
 
-def policy_to_clave(policy_name, policy_type_id=None):
+def normalize_policy_name(name) -> str:
+    return (name or '').strip().upper()
+
+def infer_policy_type_id(policy_name, policy_type_id=None):
     if policy_type_id is not None:
         try:
-            clave = POLICY_TYPE_ID_CLAVE_MAP.get(int(policy_type_id))
-            if clave:
-                return clave
+            pid = int(policy_type_id)
+            if pid > 0:
+                return pid
         except (TypeError, ValueError):
             pass
-    if not policy_name:
+    norm = normalize_policy_name(policy_name)
+    if not norm:
         return None
-    return POLICY_CLAVE_MAP.get((policy_name or '').strip().upper())
+    name_to_id = {
+        'VACACIONES FC': 9637,
+        'SUPERVISORES': 308356,
+        'LEGO': 172701,
+        'ANTICIPOS DE VACACIONES': 308355,
+    }
+    if norm in name_to_id:
+        return name_to_id[norm]
+    if 'ANTICIPO' in norm:
+        return 308355
+    if 'SUPERVISOR' in norm:
+        return 308356
+    if 'LEGO' in norm:
+        return 172701
+    if 'VACACIONES' in norm and 'DC' not in norm:
+        return 9637
+    if 'VACACIONES' in norm and 'DC' in norm:
+        return 179204
+    return None
+
+def policy_to_clave(policy_name, policy_type_id=None):
+    pid = infer_policy_type_id(policy_name, policy_type_id)
+    if pid is not None:
+        clave = POLICY_TYPE_ID_CLAVE_MAP.get(pid)
+        if clave:
+            return clave
+    norm = normalize_policy_name(policy_name)
+    if norm in POLICY_CLAVE_MAP:
+        return POLICY_CLAVE_MAP[norm]
+    if 'LEGO' in norm:
+        return '6073'
+    if any(k in norm for k in ('SUPERVISOR', 'ANTICIPO', 'VACACIONES')):
+        return '6072'
+    return None
+
+def _lookup_codigo_organigrama(cur, uid, internal):
+    for sql in (
+        """
+        SELECT TOP 1 CodigoCol
+        FROM Organigrama.dbo.OrganigramaCompleto
+        WHERE UsuarioId = ? OR Correo = ? OR LOWER(Correo) = LOWER(?)
+        """,
+        """
+        SELECT TOP 1 CodigoCol
+        FROM Organigrama.dbo.Organigrama
+        WHERE UsuarioId = ? OR Correo = ? OR LOWER(Correo) = LOWER(?)
+        """,
+    ):
+        try:
+            cur.execute(sql, uid, internal, internal)
+            row = cur.fetchone()
+            if row and row.CodigoCol:
+                return str(row.CodigoCol).strip()
+        except Exception as ex:
+            dbg(f"lookup organigrama error: {ex}")
+    return None
+
+def resolve_codigo_col(conn, internal_id, usuario_id, request_id=None) -> str | None:
+    """Resuelve CodigoCol: export previo, patrón DC, organigrama o dígitos."""
+    if request_id is not None:
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT TOP 1 codigo_col
+                FROM dbo.sap_time_off_exports
+                WHERE request_id = ? AND codigo_col IS NOT NULL AND LTRIM(RTRIM(codigo_col)) <> ''
+                ORDER BY id DESC
+                """,
+                request_id,
+            )
+            row = cur.fetchone()
+            cur.close()
+            if row and row.codigo_col:
+                return str(row.codigo_col).strip()
+        except Exception as ex:
+            dbg(f"resolve_codigo_col prior export error: {ex}")
+
+    internal = (internal_id or '').strip()
+    if not internal:
+        return None
+
+    ln = len(internal)
+    if ln >= 2 and ln % 2 == 0 and internal.isdigit():
+        half = ln // 2
+        left, right = internal[:half], internal[half:]
+        if left == right:
+            return (left.lstrip('0') or left)
+
+    uid = (usuario_id or '').strip()
+    if not uid and '@' in internal:
+        uid = internal.split('@', 1)[0]
+    if not uid:
+        uid = internal
+
+    cur = conn.cursor()
+    codigo = _lookup_codigo_organigrama(cur, uid, internal)
+    cur.close()
+    if codigo:
+        return codigo
+
+    if internal.isdigit():
+        return internal.lstrip('0') or internal
+
+    return None
 
 def build_log_url(accion, codigo_col, from_date, to_date, clave, dias):
     params = [
@@ -381,9 +516,14 @@ def process():
             cur.execute(SQL_DEDUP)
 
         scope = export_scope()
-        cur.execute(sql_base_export(), *PROCESS_STATES, *policy_type_ids_for_sap())
+        params = list(PROCESS_STATES) + policy_type_ids_for_sap() + policy_names_for_sap()
+        cur.execute(sql_base_export(), *params)
         rows = cur.fetchall()
-        print(f"Export SAP ({scope}): {len(rows)} filas candidatas", flush=True)
+        print(
+            f"Export SAP ({scope}): {len(rows)} filas candidatas "
+            f"(ids={','.join(policy_type_ids_for_sap())}, names={','.join(policy_names_for_sap())})",
+            flush=True,
+        )
 
         total = 0
         for row in rows:
@@ -397,14 +537,16 @@ def process():
             to_date    = row.to_date
             dias       = row.amount_requested
             state      = (row.state or '').upper()
-            codigo_col = row.CodigoCol
+            codigo_col = resolve_codigo_col(conn, email, usuario_id, request_id)
+            effective_policy_id = infer_policy_type_id(policy, policy_type_id)
+
+            clave = policy_to_clave(policy, effective_policy_id)
 
             if not full_name:
                 if email and '@' in email: full_name = email.split('@', 1)[0]
                 else: full_name = email or None
 
-            clave = policy_to_clave(policy, policy_type_id)
-
+            dbg(f"req {request_id}: policy={policy!r} id={policy_type_id}->{effective_policy_id} clave={clave} codigo={codigo_col}")
             cur2 = conn.cursor(); cur2.execute(SQL_GET_LAST, request_id); last = cur2.fetchone(); cur2.close()
             cur3 = conn.cursor(); cur3.execute(SQL_HAS_APPROVED_OK, request_id); had_approved_ok = bool(cur3.fetchone()); cur3.close()
 
@@ -417,12 +559,18 @@ def process():
                 else:
                     if not clave or not codigo_col:
                         req_url = build_log_url('INS?', codigo_col, from_date, to_date, (clave or '??'), dias)
+                        err_detail = []
+                        if not clave:
+                            err_detail.append(f"clave desconocida policy={policy!r} id={policy_type_id}")
+                        if not codigo_col:
+                            err_detail.append(f"CodigoCol no resuelto internal={email!r} usuario={usuario_id!r}")
                         upsert(cur,
                             request_id=request_id, processed_state=state, email=email, issuer_full_name=full_name, usuario_id=usuario_id,
                             codigo_col=codigo_col, policy_name=policy, clave=(clave or '??'), infotipo=INFOTIPO,
                             from_date=from_date, to_date=to_date, dias=dias,
                             request_url=req_url, response_status=(last.response_status if last else None),
-                            response_ok=False, response_text="ACCION=? | ERROR: datos insuficientes (clave/codigo_col)")
+                            response_ok=False, response_text="ACCION=? | ERROR: " + '; '.join(err_detail))
+                        print(f" ! req {request_id} ({policy}): omitido INS -> {'; '.join(err_detail)}", flush=True)
                         total += 1
                         continue
                     accion = 'INS'; must_call_sap = True

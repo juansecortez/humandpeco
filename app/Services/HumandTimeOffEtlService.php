@@ -12,7 +12,7 @@ class HumandTimeOffEtlService
     {
         $items = $this->fetchAll($policyTypeId);
 
-        return $this->upsert($items);
+        return $this->upsert($items, $policyTypeId);
     }
 
     public function activeSinceDate(): string
@@ -107,7 +107,7 @@ class HumandTimeOffEtlService
         ];
     }
 
-    private function upsert(array $items): int
+    private function upsert(array $items, int $policyTypeId): int
     {
         if ($items === []) {
             return 0;
@@ -124,7 +124,7 @@ class HumandTimeOffEtlService
                     'request_id'                  => $item['id'],
                     'issuer_employee_internal_id' => $issuer['employeeInternalId'] ?? null,
                     'issuer_full_name'            => $this->issuerFullName($issuer),
-                    'policy_type_id'              => $policy['id'] ?? null,
+                    'policy_type_id'              => $policy['id'] ?? $policyTypeId,
                     'policy_name'                 => $policy['name'] ?? null,
                     'from_date'                   => ($item['from']['date'] ?? null),
                     'to_date'                     => ($item['to']['date'] ?? null),

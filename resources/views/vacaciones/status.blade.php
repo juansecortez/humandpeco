@@ -135,6 +135,7 @@
                     <i class="material-icons">send</i> Enviar a SAP
                   </button>
                 </form>
+                <p class="text-muted small mt-2 mb-0 text-lg-right">Incluye Vacaciones FC, LEGO y Supervisores. Anticipos DC → Estatus Anticipos DC.</p>
               </div>
             </div>
 
