@@ -211,10 +211,7 @@ class VacacionesController extends Controller
         $fcNames = $this->fcPolicyNames();
         $fcIds   = $this->fcPolicyTypeIds();
 
-        $exports = SapTimeOffExport::query()
-            ->forPolicies($fcIds, $fcNames, ['%Supervisor%'])
-            ->orderByDesc('created_at')
-            ->get();
+        $exports = $this->sapStatusExports($fcIds, $fcNames, ['%SUPERVISOR%']);
 
 
 
@@ -300,12 +297,9 @@ class VacacionesController extends Controller
     {
 
         $policyId   = (int) config('time_off_policies.dc.anticipos-vacaciones.policy_type_id', 308355);
-        $policyName = trim((string) config('time_off_policies.dc.anticipos-vacaciones.policy_name', 'ANTICIPOS DE VACACIONES'));
+        $policyName = $this->anticiposDcPolicyName();
 
-        $exports = SapTimeOffExport::query()
-            ->forPolicies([$policyId], [$policyName], ['%Anticipo%'])
-            ->orderByDesc('created_at')
-            ->get();
+        $exports = $this->sapStatusExports([$policyId], [$policyName], ['%ANTICIPO%']);
 
         $procStates = $exports->pluck('processed_state')->filter()->unique()->values();
 
@@ -472,9 +466,64 @@ class VacacionesController extends Controller
     {
         return collect(config('time_off_policies.fc', []))
             ->pluck('policy_name')
-            ->map(fn ($n) => trim((string) $n))
+            ->map(fn ($n) => strtoupper(trim((string) $n)))
             ->values()
             ->all();
+    }
+
+    /**
+     * Exportaciones SAP + solicitudes APPROVED/CANCELLED aún sin fila de envío.
+     *
+     * @param  array<int>  $policyTypeIds
+     * @param  array<string>  $policyNames
+     * @param  array<string>  $nameLike
+     */
+    private function sapStatusExports(array $policyTypeIds, array $policyNames, array $nameLike = [])
+    {
+        $exports = SapTimeOffExport::query()
+            ->forPolicies($policyTypeIds, $policyNames, $nameLike)
+            ->orderByDesc('created_at')
+            ->get();
+
+        $requests = TimeOffRequest::query()
+            ->forPolicies($policyTypeIds, $policyNames, $nameLike)
+            ->whereIn('state', ['APPROVED', 'CANCELLED', 'approved', 'cancelled'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $exportedIds = $exports->pluck('request_id')->unique()->flip();
+
+        foreach ($requests as $req) {
+            if ($exportedIds->has($req->request_id)) {
+                continue;
+            }
+
+            $usuarioId = $req->issuer_employee_internal_id;
+            if ($usuarioId && str_contains($usuarioId, '@')) {
+                $usuarioId = strstr($usuarioId, '@', true) ?: $usuarioId;
+            }
+
+            $exports->push(new SapTimeOffExport([
+                'request_id'                  => $req->request_id,
+                'processed_state'             => strtoupper((string) $req->state),
+                'issuer_employee_internal_id' => $req->issuer_employee_internal_id,
+                'issuer_full_name'            => $req->issuer_full_name,
+                'usuario_id'                  => $usuarioId,
+                'policy_name'                 => $req->policy_name,
+                'policy_type_id'              => $req->policy_type_id,
+                'from_date'                   => $req->from_date,
+                'to_date'                     => $req->to_date,
+                'dias'                        => $req->amount_requested,
+                'response_status'             => null,
+                'response_ok'                 => false,
+                'response_text'               => null,
+                'created_at'                  => null,
+            ]));
+        }
+
+        return $exports
+            ->sortByDesc(fn ($e) => $e->created_at?->timestamp ?? $e->request_id)
+            ->values();
     }
 
     /** @return list<int> */

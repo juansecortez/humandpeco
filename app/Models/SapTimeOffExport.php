@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class SapTimeOffExport extends Model
 {
@@ -48,10 +49,11 @@ class SapTimeOffExport extends Model
     ];
 
     /**
-     * Filtra por policy_type_id y/o nombres exactos (sin UPPER() → usa índices).
+     * Filtra exportaciones por política (nombre normalizado, LIKE o policy_type_id si existe la columna).
      *
      * @param  array<int>  $policyTypeIds
      * @param  array<string>  $policyNames
+     * @param  array<string>  $nameLike  Patrones LIKE (%Anticipo%, etc.)
      */
     public function scopeForPolicies($query, array $policyTypeIds, array $policyNames = [], array $nameLike = [])
     {
@@ -59,21 +61,33 @@ class SapTimeOffExport extends Model
         $policyNames   = array_values(array_filter(array_map('trim', $policyNames)));
         $nameLike      = array_values(array_filter(array_map('trim', $nameLike)));
 
-        return $query->where(function ($q) use ($policyTypeIds, $policyNames, $nameLike) {
-            $applied = false;
-            if ($policyTypeIds !== []) {
+        static $hasPolicyTypeId = null;
+        if ($hasPolicyTypeId === null) {
+            $hasPolicyTypeId = Schema::hasColumn($this->getTable(), 'policy_type_id');
+        }
+
+        return $query->where(function ($q) use ($policyTypeIds, $policyNames, $nameLike, $hasPolicyTypeId) {
+            $first = true;
+
+            if ($hasPolicyTypeId && $policyTypeIds !== []) {
                 $q->whereIn('policy_type_id', $policyTypeIds);
-                $applied = true;
+                $first = false;
             }
-            if ($policyNames !== []) {
-                $applied ? $q->orWhereIn('policy_name', $policyNames)
-                         : $q->whereIn('policy_name', $policyNames);
-                $applied = true;
+
+            foreach ($policyNames as $name) {
+                $norm = strtoupper(trim($name));
+                $first
+                    ? $q->whereRaw('UPPER(LTRIM(RTRIM(policy_name))) = ?', [$norm])
+                    : $q->orWhereRaw('UPPER(LTRIM(RTRIM(policy_name))) = ?', [$norm]);
+                $first = false;
             }
+
             foreach ($nameLike as $pattern) {
-                $applied ? $q->orWhere('policy_name', 'like', $pattern)
-                         : $q->where('policy_name', 'like', $pattern);
-                $applied = true;
+                $pat = strtoupper($pattern);
+                $first
+                    ? $q->whereRaw('UPPER(policy_name) LIKE ?', [$pat])
+                    : $q->orWhereRaw('UPPER(policy_name) LIKE ?', [$pat]);
+                $first = false;
             }
         });
     }
