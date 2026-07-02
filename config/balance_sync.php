@@ -9,7 +9,7 @@
  */
 return [
     // Endpoint SAP que devuelve los días por concepto (vacaciones, anticipo, convenio, lego)
-    'sap_balance_url' => env('SAP_BALANCE_URL', 'https://qasci01.pc.cmbjpc.com.mx:1443/sap/bc/zws_dias_vac'),
+    'sap_balance_url' => env('SAP_BALANCE_URL', 'http://proci01.pc.cmbjpc.com.mx:8000/sap/bc/zws_dias_vac'),
 
     // sap-client (reutiliza el del export si no se define uno propio)
     'sap_client' => env('SAP_BALANCE_CLIENT', env('SAP_CLIENT', '300')),
@@ -25,8 +25,15 @@ return [
     // Por seguridad, por defecto solo simula (no escribe en Humand)
     'default_dry_run' => filter_var(env('BALANCE_SYNC_DRY_RUN', true), FILTER_VALIDATE_BOOLEAN),
 
-    // Cuántos usuarios procesar por lote (logs/commits)
+    // Cuántos usuarios procesar por lote en el worker CLI (sin límite HTTP)
     'batch_size' => (int) env('BALANCE_SYNC_BATCH', 50),
+
+    // Timeouts HTTP a Humand (segundos)
+    'humand_connect_timeout' => (int) env('BALANCE_SYNC_HUMAND_CONNECT_TIMEOUT', 5),
+    'humand_read_timeout'    => (int) env('BALANCE_SYNC_HUMAND_READ_TIMEOUT', 15),
+
+    // Minutos antes de marcar un run bulk en background como fallido
+    'stale_run_minutes' => (int) env('BALANCE_SYNC_STALE_MINUTES', 240),
 
     // Empleados FC de subtipo "Supervisor" se detectan por AreaPersonal
     'supervisor_area_personal' => [2, 5],

@@ -19,6 +19,42 @@ class HumandBalanceClient
      */
     public function currentBalance(string $employeeInternalId, int $policyTypeId): array
     {
+        $all = $this->currentBalances($employeeInternalId, [$policyTypeId]);
+
+        return $all[$policyTypeId] ?? [
+            'found'           => false,
+            'current_balance' => null,
+            'cycle_title'     => null,
+            'cycle_from'      => null,
+            'cycle_to'        => null,
+            'raw'             => null,
+        ];
+    }
+
+    /**
+     * Saldos del empleado para varias políticas en una sola llamada.
+     *
+     * @param  array<int, int>  $policyTypeIds
+     * @return array<int, array{found: bool, current_balance: ?float, cycle_title: ?string, cycle_from: ?string, cycle_to: ?string, raw: ?array}>
+     */
+    public function currentBalances(string $employeeInternalId, array $policyTypeIds): array
+    {
+        $policyTypeIds = array_values(array_unique(array_map('intval', $policyTypeIds)));
+        $empty = [
+            'found'           => false,
+            'current_balance' => null,
+            'cycle_title'     => null,
+            'cycle_from'      => null,
+            'cycle_to'        => null,
+            'raw'             => null,
+        ];
+
+        $out = array_fill_keys($policyTypeIds, $empty);
+
+        if ($policyTypeIds === []) {
+            return [];
+        }
+
         $base = $this->apiBase();
 
         $response = Http::withOptions($this->httpOptions())
@@ -26,11 +62,11 @@ class HumandBalanceClient
                 'Accept'        => 'application/json',
                 'Authorization' => $this->auth(),
             ])
-            ->connectTimeout(20)
-            ->timeout(60)
+            ->connectTimeout($this->connectTimeout())
+            ->timeout($this->readTimeout())
             ->get("{$base}/time-off/balances", [
                 'employeeInternalId' => $employeeInternalId,
-                'policyTypeIds'      => (string) $policyTypeId,
+                'policyTypeIds'      => implode(',', $policyTypeIds),
                 'limit'              => 50,
                 'page'               => 1,
             ]);
@@ -39,24 +75,47 @@ class HumandBalanceClient
 
         $items = $response->json('items') ?? [];
         if ($items === []) {
-            return ['found' => false, 'current_balance' => null, 'cycle_title' => null, 'cycle_from' => null, 'cycle_to' => null, 'raw' => null];
+            return $out;
         }
 
-        $chosen = $this->pickCycle($items);
-        if ($chosen === null) {
-            return ['found' => false, 'current_balance' => null, 'cycle_title' => null, 'cycle_from' => null, 'cycle_to' => null, 'raw' => null];
+        $grouped = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $policyId = (int) ($item['policyTypeId'] ?? $item['policyType']['id'] ?? 0);
+            if ($policyId <= 0) {
+                continue;
+            }
+
+            $grouped[$policyId][] = $item;
         }
 
-        $cycle = $chosen['cycle'] ?? [];
+        foreach ($policyTypeIds as $policyTypeId) {
+            $policyItems = $grouped[$policyTypeId] ?? [];
+            if ($policyItems === []) {
+                continue;
+            }
 
-        return [
-            'found'           => true,
-            'current_balance' => isset($chosen['currentBalance']) ? (float) $chosen['currentBalance'] : null,
-            'cycle_title'     => $cycle['title'] ?? null,
-            'cycle_from'      => $cycle['fromDate'] ?? null,
-            'cycle_to'        => $cycle['toDate'] ?? null,
-            'raw'             => $chosen,
-        ];
+            $chosen = $this->pickCycle($policyItems);
+            if ($chosen === null) {
+                continue;
+            }
+
+            $cycle = $chosen['cycle'] ?? [];
+
+            $out[$policyTypeId] = [
+                'found'           => true,
+                'current_balance' => isset($chosen['currentBalance']) ? (float) $chosen['currentBalance'] : null,
+                'cycle_title'     => $cycle['title'] ?? null,
+                'cycle_from'      => $cycle['fromDate'] ?? null,
+                'cycle_to'        => $cycle['toDate'] ?? null,
+                'raw'             => $chosen,
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -84,8 +143,8 @@ class HumandBalanceClient
                 'Content-Type'  => 'application/json',
                 'Authorization' => $this->auth(),
             ])
-            ->connectTimeout(20)
-            ->timeout(60)
+            ->connectTimeout($this->connectTimeout())
+            ->timeout($this->readTimeout())
             ->post("{$base}/time-off/policy-types/{$policyTypeId}/balances/correction", $body);
 
         return [
@@ -132,6 +191,16 @@ class HumandBalanceClient
     private function auth(): string
     {
         return (string) $this->envClean('HUMAND_API_AUTH');
+    }
+
+    private function connectTimeout(): int
+    {
+        return max(1, (int) config('balance_sync.humand_connect_timeout', 5));
+    }
+
+    private function readTimeout(): int
+    {
+        return max(1, (int) config('balance_sync.humand_read_timeout', 15));
     }
 
     private function httpOptions(): array

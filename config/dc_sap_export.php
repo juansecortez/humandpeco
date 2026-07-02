@@ -6,7 +6,7 @@
  * Anticipos DC (308355) van por export_time_off_to_sap.py (fecha inicio/fin).
  */
 return [
-    'url'    => env('SAP_DC_PAGO_VAC_URL', 'http://qasci01.pc.cmbjpc.com.mx:8000/sap/bc/zws_pago_vac'),
+    'url'    => env('SAP_DC_PAGO_VAC_URL', 'http://proci01.pc.cmbjpc.com.mx:8000/sap/bc/zws_pago_vac'),
     'client' => env('SAP_DC_CLIENT', env('SAP_BALANCE_CLIENT', '300')),
     'user'   => env('SAP_DC_USER', env('SAP_BALANCE_USER', env('SAP_USER'))),
     'pass'   => env('SAP_DC_PASS', env('SAP_BALANCE_PASS', env('SAP_PASS'))),

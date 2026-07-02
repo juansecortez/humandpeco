@@ -220,6 +220,7 @@
       </div>
       <div class="modal-body">
         <p class="text-muted">Lee Organigrama, baja saldos de SAP y los compara con Humand. En modo simulación no se escribe nada en Humand.</p>
+        <p class="text-muted small mb-0">La sincronización masiva corre en segundo plano en el servidor (no depende del navegador).</p>
         <div class="form-group" id="sync-codigo-group" style="display:none;">
           <label for="sync-codigo">CodigoCol de la persona</label>
           <input type="text" id="sync-codigo" class="form-control" placeholder="Ej. 8758">
@@ -231,6 +232,7 @@
             Aplicar ajustes en Humand (si lo dejas desmarcado, solo simula)
           </label>
         </div>
+        <p id="sync-progress" class="text-info small mt-3 mb-0" style="display:none;"></p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-default" data-dismiss="modal">Cancelar</button>
@@ -304,6 +306,42 @@
       const statusMeta = @json($statusMeta);
       const typeLabels = @json($typeLabels);
       const highlight = @json($highlight ?? '');
+      const activeRunId = @json($activeRun->id ?? null);
+
+      function updateProgress(label) {
+        $('#sync-progress').show().text(label);
+      }
+
+      function pollRunStatus(runId, onDone) {
+        $.get('{{ url('/saldos/run') }}/' + runId + '/status')
+          .done(resp => {
+            const label = resp.message || ('Procesando ' + resp.offset + ' de ' + resp.total + ' personas…');
+            updateProgress(label);
+
+            if (!resp.done) {
+              setTimeout(() => pollRunStatus(runId, onDone), 2500);
+              return;
+            }
+
+            onDone(resp);
+          })
+          .fail(xhr => {
+            const msg = xhr.responseJSON?.message || 'Error al consultar el progreso.';
+            onDone({ ok: false, message: msg, status: 'failed' });
+          });
+      }
+
+      if (activeRunId) {
+        updateProgress('Hay una sincronización masiva en curso…');
+        pollRunStatus(activeRunId, resp => {
+          if (resp.status === 'failed' || resp.ok === false) {
+            $('#flash').html('<div class="alert alert-danger alert-dismissible fade show">' + (resp.message || 'La sincronización falló.') + '<button type="button" class="close" data-dismiss="alert"><span>&times;</span></button></div>');
+          } else {
+            $('#flash').html('<div class="alert alert-success alert-dismissible fade show">' + (resp.message || 'Sincronización completada.') + '<button type="button" class="close" data-dismiss="alert"><span>&times;</span></button></div>');
+          }
+          $('#sync-progress').hide();
+        });
+      }
 
       const dt = $('#personas-table').DataTable({
         pagingType: 'full_numbers',
@@ -422,6 +460,7 @@
         const apply = $('#sync-apply').is(':checked');
         const codigo = $('#sync-codigo').val().trim();
         const onePerson = $('#sync-codigo-group').is(':visible');
+        const isBulkAll = !onePerson;
 
         if (onePerson && !codigo) {
           alert('Ingresa el CodigoCol de la persona.');
@@ -431,18 +470,59 @@
         if (apply && !confirm('Vas a APLICAR ajustes reales en Humand. ¿Continuar?')) return;
 
         $btn.prop('disabled', true).html('<i class="material-icons">hourglass_empty</i> Procesando…');
-        $.ajax({
-          url: '{{ route('saldos.run') }}', method: 'POST',
-          data: { apply: apply ? 1 : 0, codigo: codigo, _token: '{{ csrf_token() }}' },
-          timeout: 900000
-        })
-        .done(resp => { window.location = resp.redirect || '{{ route('saldos.index') }}'; })
-        .fail(xhr => {
+        $('#sync-progress').hide().text('');
+
+        function postSync() {
+          return $.ajax({
+            url: '{{ route('saldos.run') }}',
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            data: {
+              apply: apply ? 1 : 0,
+              codigo: onePerson ? codigo : '',
+              _token: '{{ csrf_token() }}'
+            },
+            timeout: isBulkAll ? 60000 : 900000
+          });
+        }
+
+        function finishSuccess(resp) {
+          if (resp.redirect) {
+            window.location = resp.redirect;
+            return;
+          }
+          window.location = '{{ route('saldos.index') }}';
+        }
+
+        function finishError(xhr) {
           let msg = xhr.responseJSON?.message || 'Error al sincronizar.';
           $('#syncModal').modal('hide');
           $('#flash').html('<div class="alert alert-danger alert-dismissible fade show">' + msg + '<button type="button" class="close" data-dismiss="alert"><span>&times;</span></button></div>');
-        })
-        .always(() => $btn.prop('disabled', false).html('<i class="material-icons">play_arrow</i> Ejecutar'));
+          $btn.prop('disabled', false).html('<i class="material-icons">play_arrow</i> Ejecutar');
+        }
+
+        if (isBulkAll) {
+          postSync()
+            .done(resp => {
+              $('#syncModal').modal('hide');
+              updateProgress(resp.message || 'Sincronización iniciada…');
+              pollRunStatus(resp.run_id, statusResp => {
+                if (statusResp.status === 'failed' || statusResp.ok === false) {
+                  finishError({ responseJSON: { message: statusResp.message } });
+                  return;
+                }
+                finishSuccess(statusResp);
+              });
+            })
+            .fail(finishError);
+
+          return;
+        }
+
+        postSync()
+          .done(finishSuccess)
+          .fail(finishError)
+          .always(() => $btn.prop('disabled', false).html('<i class="material-icons">play_arrow</i> Ejecutar'));
       });
     });
   </script>

@@ -20,7 +20,21 @@ class OrganigramaBalanceRepository
      *   nivel_firma: int, area_personal: ?int, person_type: string, internal_id: ?string
      * }>
      */
-    public function employees(array $codigos = []): array
+    public function countEmployees(array $codigos = []): int
+    {
+        $query = DB::connection('organigrama')
+            ->table('OrganigramaCompleto')
+            ->whereNotNull('CodigoCol');
+
+        $codigos = array_values(array_filter(array_map('trim', $codigos), fn ($c) => $c !== ''));
+        if ($codigos !== []) {
+            $query->whereIn('CodigoCol', $codigos);
+        }
+
+        return (int) $query->count();
+    }
+
+    public function employees(array $codigos = [], ?int $offset = null, ?int $limit = null): array
     {
         $query = DB::connection('organigrama')
             ->table('OrganigramaCompleto')
@@ -32,11 +46,19 @@ class OrganigramaBalanceRepository
                 'NivelFirma',
                 'AreaPersonal',
             ])
-            ->whereNotNull('CodigoCol');
+            ->whereNotNull('CodigoCol')
+            ->orderBy('CodigoCol');
 
         $codigos = array_values(array_filter(array_map('trim', $codigos), fn ($c) => $c !== ''));
         if ($codigos !== []) {
             $query->whereIn('CodigoCol', $codigos);
+        }
+
+        if ($offset !== null) {
+            $query->offset($offset);
+        }
+        if ($limit !== null) {
+            $query->limit($limit);
         }
 
         $rows = $query->get();

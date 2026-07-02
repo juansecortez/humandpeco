@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\BalanceSyncItem;
+use App\Models\BalanceSyncRun;
+use App\Services\Balances\BalanceSyncBackgroundLauncher;
 use App\Services\Balances\OrganigramaBalanceRepository;
 use App\Services\Balances\BalanceSyncService;
 use Illuminate\Http\Request;
@@ -51,6 +53,12 @@ class SaldosController extends Controller
         $withSync    = $personas->where('has_sync', true)->count();
         $withoutSync = $personas->count() - $withSync;
 
+        $activeRun = BalanceSyncRun::query()
+            ->where('status', 'running')
+            ->where('scope', 'like', 'all:%')
+            ->orderByDesc('id')
+            ->first();
+
         return view('saldos.index', [
             'activePage'  => 'saldos-sync',
             'menuParent'  => 'saldos',
@@ -61,6 +69,7 @@ class SaldosController extends Controller
             'withSync'    => $withSync,
             'withoutSync' => $withoutSync,
             'highlight'   => trim((string) $request->query('codigo', '')),
+            'activeRun'   => $activeRun,
         ]);
     }
 
@@ -99,34 +108,67 @@ class SaldosController extends Controller
         ]);
     }
 
-    public function run(Request $request, BalanceSyncService $service)
+    public function runStatus(int $runId, BalanceSyncService $service)
     {
-        @set_time_limit(900);
+        return response()->json(array_merge(
+            ['ok' => true],
+            $service->runStatus($runId),
+            ['redirect' => route('saldos.index')]
+        ));
+    }
+
+    public function run(Request $request, BalanceSyncService $service, BalanceSyncBackgroundLauncher $launcher)
+    {
+        if ($request->hasSession()) {
+            $request->session()->save();
+        }
 
         $apply   = filter_var($request->input('apply', false), FILTER_VALIDATE_BOOLEAN);
         $codigos = array_filter(array_map('trim', explode(',', (string) $request->input('codigo', ''))), fn ($c) => $c !== '');
         $dryRun  = !$apply;
+        $isBulk  = $codigos === [];
+
+        $this->extendPhpRuntime($isBulk ? 60 : 900);
 
         $user = optional($request->user())->name
             ?? optional($request->user())->getAuthIdentifier()
             ?? 'web';
 
         try {
-            $run = $service->run($dryRun, $codigos, (string) $user);
+            if ($isBulk) {
+                $run = $service->startBulkRun($dryRun, (string) $user);
+                $launcher->launch($run->id);
+                $status = $service->runStatus($run->id);
+            } else {
+                $run = $service->run($dryRun, $codigos, (string) $user);
+                $status = null;
+            }
         } catch (\Throwable $e) {
             $msg = 'Sincronización falló: ' . $e->getMessage();
-            if ($request->ajax()) {
+            if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['ok' => false, 'message' => $msg], 500);
             }
             return back()->with('error', $msg);
         }
 
-        $modo = $dryRun ? 'Simulación' : 'Ajustes aplicados';
-        $msg  = "{$modo} (run #{$run->id}): {$run->total_items} ítems · {$run->applied} a ajustar/aplicados · {$run->unchanged} sin cambio · {$run->skipped} omitidos · {$run->errors} errores.";
-
         $redirect = route('saldos.index', $codigos !== [] ? ['codigo' => $codigos[0]] : []);
 
-        if ($request->ajax()) {
+        if ($request->ajax() || $request->wantsJson()) {
+            if ($isBulk) {
+                return response()->json([
+                    'ok'         => true,
+                    'background' => true,
+                    'run_id'     => $run->id,
+                    'offset'     => $status['offset'],
+                    'total'      => $status['total'],
+                    'message'    => 'Sincronización iniciada en segundo plano. Puedes cerrar esta ventana; el progreso continuará en el servidor.',
+                    'redirect'   => $redirect,
+                ]);
+            }
+
+            $modo = $dryRun ? 'Simulación' : 'Ajustes aplicados';
+            $msg  = "{$modo} (run #{$run->id}): {$run->total_items} ítems · {$run->applied} a ajustar/aplicados · {$run->unchanged} sin cambio · {$run->skipped} omitidos · {$run->errors} errores.";
+
             return response()->json([
                 'ok'       => true,
                 'message'  => $msg,
@@ -134,6 +176,15 @@ class SaldosController extends Controller
             ]);
         }
 
-        return redirect($redirect)->with('status', $msg);
+        return redirect($redirect)->with('status', $isBulk
+            ? 'Sincronización masiva iniciada en segundo plano.'
+            : 'Sincronización completada.');
+    }
+
+    private function extendPhpRuntime(int $seconds): void
+    {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit($seconds);
+        }
     }
 }

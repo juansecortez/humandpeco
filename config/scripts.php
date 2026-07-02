@@ -12,4 +12,7 @@ return [
 
     /** Meses hacia atrás para createdAtSince si no hay HUMAND_ETL_CREATED_AT_SINCE fija. */
     'etl_lookback_months' => (int) env('HUMAND_ETL_LOOKBACK_MONTHS', 2),
+
+    /** PHP CLI para procesos en segundo plano (balance sync worker). */
+    'php_bin' => env('PHP_BIN'),
 ];

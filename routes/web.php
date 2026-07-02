@@ -141,6 +141,7 @@ Route::group(['middleware' => 'auth:web,organigrama'], function () {
 
     Route::get('/saldos', [SaldosController::class, 'index'])->name('saldos.index');
     Route::get('/saldos/log/{codigo}', [SaldosController::class, 'personLog'])->name('saldos.personLog');
+    Route::get('/saldos/run/{runId}/status', [SaldosController::class, 'runStatus'])->name('saldos.runStatus');
     Route::post('/saldos/sync', [SaldosController::class, 'run'])->name('saldos.run');
 
     Route::get('/vacaciones/estatus', [VacacionesController::class, 'status'])
